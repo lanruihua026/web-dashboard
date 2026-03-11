@@ -1,0 +1,200 @@
+{
+  "properties": [
+    {
+      "identifier": "func_array",
+      "name": "数组功能点",
+      "functionType": "u",
+      "accessMode": "rw",
+      "desc": "功能点描述",
+      "dataType": {
+        "type": "array",
+        "specs": {
+          "length": 50,
+          "type": "int32",
+          "specs": {
+            "min": "1",
+            "max": "100",
+            "unit": "km",
+            "step": "1"
+          }
+        }
+      }
+    },
+    {
+      "identifier": "func_bitmap",
+      "name": "位图功能点",
+      "functionType": "u",
+      "accessMode": "rw",
+      "desc": "",
+      "dataType": {
+        "type": "bitMap",
+        "specs": {
+          "length": 2,
+          "define": [
+            {
+              "bit": 0,
+              "0": "0的含义",
+              "1": "1的含义"
+            },
+            {
+              "bit": 1,
+              "0": "00的含义",
+              "1": "01的含义"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "identifier": "func_bool",
+      "name": "布尔功能点",
+      "functionType": "u",
+      "accessMode": "rw",
+      "desc": "",
+      "dataType": {
+        "type": "bool",
+        "specs": {
+          "true": "开启",
+          "false": "关闭"
+        }
+      }
+    },
+    {
+      "identifier": "func_enum",
+      "name": "枚举功能点",
+      "functionType": "u",
+      "accessMode": "rw",
+      "desc": "",
+      "dataType": {
+        "type": "enum",
+        "specs": {
+          "1": "选项1",
+          "2": "选项2"
+        }
+      }
+    },
+    {
+      "identifier": "func_int32",
+      "name": "数值功能点",
+      "functionType": "u",
+      "accessMode": "rw",
+      "desc": "",
+      "dataType": {
+        "type": "int32",
+        "specs": {
+          "min": "1",
+          "max": "100",
+          "unit": "",
+          "step": "1"
+        }
+      }
+    },
+    {
+      "identifier": "func_string",
+      "name": "字符串功能点",
+      "functionType": "u",
+      "accessMode": "r",
+      "desc": null,
+      "dataType": {
+        "type": "string",
+        "specs": {
+          "length": "512"
+        }
+      }
+    },
+    {
+      "identifier": "func_struct",
+      "name": "结构体功能点",
+      "functionType": "u",
+      "accessMode": "rw",
+      "desc": null,
+      "dataType": {
+        "type": "struct",
+        "specs": [
+          {
+            "identifier": "params1",
+            "name": "参数1",
+            "dataType": {
+              "type": "int32",
+              "specs": {
+                "min": "1",
+                "max": "100",
+                "unit": null,
+                "step": null
+              }
+            }
+          },
+          {
+            "identifier": "params2",
+            "name": "参数2",
+            "dataType": {
+              "type": "bool",
+              "specs": {
+                "true": "开启",
+                "false": "关闭"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "identifier": "Error",
+      "name": "故障上报",
+      "desc": "",
+      "outputData": [
+        {
+          "identifier": "ErrorCode",
+          "name": "故障代码",
+          "dataType": {
+            "type": "enum",
+            "specs": {
+              "0": "恢复正常"
+            }
+          }
+        }
+      ],
+      "functionType": "u",
+      "eventType": "info"
+    }
+  ],
+  "services": [
+    {
+      "name": "执行命令",
+      "identifier": "execute",
+      "functionType": "u",
+      "desc": "",
+      "callType": "async",
+      "input": [
+        {
+          "identifier": "params1",
+          "name": "输入参数1",
+          "dataType": {
+            "type": "int32",
+            "specs": {
+              "min": "1",
+              "max": "100",
+              "unit": "",
+              "step": "1"
+            }
+          }
+        }
+      ],
+      "output": [
+        {
+          "identifier": "result",
+          "name": "结果",
+          "dataType": {
+            "type": "bool",
+            "specs": {
+              "true": "成功",
+              "false": "失败"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

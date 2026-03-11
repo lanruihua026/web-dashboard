@@ -195,24 +195,29 @@ async function authHeader() {
  * OneNET AIoT REST API:
  *   GET /thingmodel/query-device-property?product_id={}&device_name={}
  *
- * 响应结构（注意：value 字段为字符串类型，非布尔/数字）：
+ * 响应结构（value 字段为字符串类型，非布尔/数字）：
  *   {
  *     code: 0,
- *     msg: "succ",
  *     data: [
- *       { identifier: "isFull", value: "false", time: 1234567890000 },
- *       { identifier: "weight", value: "239",   time: 1234567890000 }
+ *       { identifier: "phone_weight",  value: "1234",  time: 1234567890000 },
+ *       { identifier: "phone_percent", value: "24.68", time: 1234567890000 },
+ *       { identifier: "phone_full",    value: "false", time: 1234567890000 },
+ *       ...（mouse_* / battery_* 同结构）
  *     ]
  *   }
  *
  * 在线判断规则：
- *   属性 time 字段为平台收到上报的 Unix 毫秒时间戳。
- *   ESP32 每 10 秒上报一次，若距今 ≤ 30 秒则视为在线，否则视为离线。
+ *   取所有属性时间戳的最大值，距今 ≤ 30 秒则视为在线。
  *
- * @returns {Promise<{ isFull: boolean, weight: number, online: boolean, lastReportTime: number|null }>}
+ * @returns {Promise<{
+ *   phone:   { weight: number, percent: number, full: boolean },
+ *   mouse:   { weight: number, percent: number, full: boolean },
+ *   battery: { weight: number, percent: number, full: boolean },
+ *   online:  boolean,
+ *   lastReportTime: number|null
+ * }>}
  */
 export async function fetchDeviceProperties() {
-  // 【调试】标记请求开始，便于在日志中定位每一轮刷新的起点
   console.log('[OneNET] 开始请求设备属性...')
 
   const headers = await authHeader()
@@ -224,42 +229,45 @@ export async function fetchDeviceProperties() {
     }
   })
 
-  // 平台业务层错误（HTTP 200 但 code !== 0），如鉴权失败、设备不存在等
   if (data.code !== 0) {
     console.error('[OneNET] 属性查询业务错误:', data)
     throw new Error(`OneNET API error: ${data.msg || data.code}`)
   }
 
-  // 将 data.data 统一处理为数组（防御性编程，避免平台返回非数组时崩溃）
   const list = Array.isArray(data.data) ? data.data : []
-
-  // 【调试】序列化输出原始属性数组，可直接看到 identifier / value / time 的原始值
-  // 注意：value 是字符串（如 "false"、"239"），不是布尔值或数字
   console.log('[OneNET] 属性列表（原始）:', JSON.stringify(list))
 
-  // 按 identifier 查找对应属性对象
   const findItem = (id) => list.find((item) => item.identifier === id)
-  const isFullItem = findItem('isFull')
-  const weightItem = findItem('weight')
 
-  // isFull：平台下发字符串 "true" / "false"，必须用 === 'true' 比较
-  // 注意：Boolean("false") === true（非空字符串均为 truthy），不能直接转布尔
-  const isFull = isFullItem?.value === 'true'
+  // 解析单个仓格的三个属性，返回 { weight, percent, full, _time }
+  const parseBin = (prefix) => {
+    const wItem = findItem(`${prefix}_weight`)
+    const pItem = findItem(`${prefix}_percent`)
+    const fItem = findItem(`${prefix}_full`)
+    return {
+      weight:  Number(wItem?.value ?? 0),
+      percent: Number(pItem?.value ?? 0),
+      full:    fItem?.value === 'true',
+      _time:   wItem?.time ?? pItem?.time ?? fItem?.time ?? null
+    }
+  }
 
-  // weight：平台下发字符串数字（如 "239"），Number() 转换；缺失时默认 0
-  const weight = Number(weightItem?.value ?? 0)
+  const phone   = parseBin('phone')
+  const mouse   = parseBin('mouse')
+  const battery = parseBin('battery')
 
-  // 取属性的上报时间戳（毫秒），优先用 isFull 的，否则用 weight 的
-  const lastReportTime = isFullItem?.time ?? weightItem?.time ?? null
+  // 取所有属性时间戳的最大值作为最后上报时间
+  const times = [phone._time, mouse._time, battery._time].filter((t) => t !== null)
+  const lastReportTime = times.length ? Math.max(...times) : null
+  const online = lastReportTime !== null && Date.now() - lastReportTime <= 30000
 
-  // 在线判断：距今 ≤ 30000ms（30 秒）视为在线
-  const online = lastReportTime !== null && (Date.now() - lastReportTime) <= 30000
+  // 删除内部辅助字段，不暴露给页面
+  delete phone._time
+  delete mouse._time
+  delete battery._time
 
-  const result = { isFull, weight, online, lastReportTime }
-
-  // 【调试】输出最终解析结果，可与页面显示值对比确认解析无误
+  const result = { phone, mouse, battery, online, lastReportTime }
   console.log('[OneNET] 属性解析结果:', result)
-  // 【调试】将时间戳转为可读时间，便于判断数据是否新鲜
   console.log('[OneNET] 上次上报时间:', lastReportTime ? new Date(lastReportTime).toLocaleString() : '无')
 
   return result
