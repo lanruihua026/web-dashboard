@@ -1,6 +1,5 @@
 <template>
   <div class="dashboard">
-    <!-- ===================== 顶部标题栏 ===================== -->
     <div class="header">
       <div class="header-left">
         <span class="title">电子废弃物分类回收站监控系统</span>
@@ -14,7 +13,7 @@
         <el-switch
           v-model="autoRefresh"
           active-text="自动刷新"
-          inactive-text="已暂停"
+          inactive-text="暂停刷新"
           @change="onAutoRefreshChange"
           class="auto-switch"
         />
@@ -24,11 +23,10 @@
       </div>
     </div>
 
-    <!-- ===================== 满溢警告横幅 ===================== -->
     <template v-for="bin in BINS" :key="bin.key">
       <el-alert
         v-if="properties[bin.key].full"
-        :title="`警告：${bin.name}已满溢！请及时清运。`"
+        :title="`警告：${bin.name}已满溢，请及时清运。`"
         type="error"
         :closable="false"
         show-icon
@@ -43,7 +41,6 @@
       </el-alert>
     </template>
 
-    <!-- ===================== 三仓数据卡片区 ===================== -->
     <el-row :gutter="20" class="card-row">
       <el-col v-for="bin in BINS" :key="bin.key" :xs="24" :sm="24" :lg="8">
         <el-card
@@ -51,7 +48,6 @@
           :class="getBinCardClass(properties[bin.key].percent, properties[bin.key].full)"
           shadow="hover"
         >
-          <!-- 仓格标题 -->
           <div class="bin-header">
             <span class="bin-icon">{{ bin.icon }}</span>
             <span class="bin-name">{{ bin.name }}</span>
@@ -64,7 +60,6 @@
             </el-tag>
           </div>
 
-          <!-- 重量 + 百分比 -->
           <div class="bin-metrics">
             <div class="metric">
               <div class="metric-label">当前重量</div>
@@ -72,7 +67,7 @@
                 <span class="value-number">{{ properties[bin.key].weight }}</span>
                 <span class="value-unit">g</span>
               </div>
-              <div class="metric-sub">物模型: {{ bin.key }}_weight</div>
+              <div class="metric-sub">物模型：{{ bin.key }}_weight</div>
             </div>
             <div class="metric">
               <div class="metric-label">满溢百分比</div>
@@ -80,11 +75,10 @@
                 <span class="value-number">{{ properties[bin.key].percent.toFixed(1) }}</span>
                 <span class="value-unit">%</span>
               </div>
-              <div class="metric-sub">物模型: {{ bin.key }}_percent</div>
+              <div class="metric-sub">物模型：{{ bin.key }}_percent</div>
             </div>
           </div>
 
-          <!-- 进度条 -->
           <el-progress
             :percentage="Math.min(properties[bin.key].percent, 100)"
             :status="getBinProgressStatus(properties[bin.key].percent, properties[bin.key].full)"
@@ -92,18 +86,17 @@
             class="bin-progress"
           />
           <div class="progress-label">
-            容量上限 5000 g &nbsp;|&nbsp; 物模型: {{ bin.key }}_full
+            容量上限 5000 g | 物模型：{{ bin.key }}_full
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- ===================== 设备状态卡片 ===================== -->
     <el-row :gutter="20" class="card-row">
       <el-col :xs="24" :sm="12" :lg="8">
         <el-card class="data-card" shadow="hover">
           <div class="card-inner">
-            <div class="card-icon">📡</div>
+            <div class="card-icon">📟</div>
             <div class="card-body">
               <div class="card-label">设备状态</div>
               <div class="card-value">
@@ -115,7 +108,7 @@
                   {{ properties.online ? '在线' : '离线' }}
                 </el-tag>
               </div>
-              <div class="card-sub">设备：Box1 &nbsp;|&nbsp; 产品：f45hkc7xC7</div>
+              <div class="card-sub">设备：Box1 | 产品：f45hkc7xC7</div>
               <div v-if="properties.lastReportTime" class="card-sub">
                 上次上报：{{ new Date(properties.lastReportTime).toLocaleString('zh-CN') }}
               </div>
@@ -125,7 +118,59 @@
       </el-col>
     </el-row>
 
-    <!-- ===================== 错误提示横幅 ===================== -->
+    <el-row :gutter="20" class="card-row">
+      <el-col :xs="24" :lg="18">
+        <el-card class="ai-card" shadow="hover">
+          <div class="ai-header">
+            <div>
+              <div class="ai-title">AI 识别结果</div>
+              <div class="ai-subtitle">显示 ESP32-CAM 最新上传图片、识别类别和置信度</div>
+            </div>
+            <el-tag :type="aiResult.ok ? 'success' : 'info'" effect="light">
+              {{ aiResult.ok ? '检测到目标' : '暂无目标' }}
+            </el-tag>
+          </div>
+
+          <div class="ai-content">
+            <div class="ai-preview">
+              <img
+                v-if="aiResult.imageUrl"
+                :src="aiResult.imageUrl"
+                alt="latest ai capture"
+                class="ai-image"
+              />
+              <div v-else class="ai-image-placeholder">暂无图片</div>
+            </div>
+
+            <div class="ai-metadata">
+              <div class="ai-metric">
+                <span class="ai-metric-label">识别结果</span>
+                <span class="ai-metric-value">
+                  {{ aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
+                </span>
+              </div>
+              <div class="ai-metric">
+                <span class="ai-metric-label">置信度</span>
+                <span class="ai-metric-value">
+                  {{ aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
+                </span>
+              </div>
+              <div class="ai-metric">
+                <span class="ai-metric-label">更新时间</span>
+                <span class="ai-metric-value">
+                  {{ aiResult.timestamp ? new Date(aiResult.timestamp).toLocaleString('zh-CN') : '尚无记录' }}
+                </span>
+              </div>
+              <div class="ai-metric">
+                <span class="ai-metric-label">服务端状态</span>
+                <span class="ai-metric-value">{{ aiResult.message || '正常' }}</span>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-alert
       v-if="errorMsg"
       :title="errorMsg"
@@ -136,79 +181,109 @@
       class="error-alert"
     />
 
-    <!-- ===================== 底部说明栏 ===================== -->
     <div class="footer">
-      <span>数据来源：OneNET AIoT 云平台 &nbsp;|&nbsp; 传感器：HX711 &nbsp;|&nbsp; 每 5 秒自动刷新</span>
+      <span>数据源：OneNET AIoT 平台 | 推理服务：YOLO FastAPI | 每 5 秒自动刷新</span>
     </div>
-
   </div>
 </template>
 
 <script setup>
 import { Refresh } from '@element-plus/icons-vue'
+import { fetchLatestAiResult } from '../api/ai'
 import { fetchDeviceProperties } from '../api/oneNet'
 
-// ===== 仓格状态辅助函数 =====
-// 根据满溢百分比和满溢标志返回卡片样式类
 function getBinCardClass(percent, full) {
   if (full || percent >= 100) return 'card-full'
   if (percent >= 80) return 'card-warning'
   return 'card-normal'
 }
 
-// 返回状态标签类型
 function getBinTagType(percent, full) {
   if (full || percent >= 100) return 'danger'
   if (percent >= 80) return 'warning'
   return 'success'
 }
 
-// 返回状态标签文字
 function getBinStatusText(percent, full) {
   if (full || percent >= 100) return '已满'
   if (percent >= 80) return '警告'
   return '正常'
 }
 
-// 返回进度条状态
 function getBinProgressStatus(percent, full) {
   if (full || percent >= 100) return 'exception'
   if (percent >= 80) return 'warning'
   return ''
 }
 
-// 仓格配置（key 与物模型前缀对应）
 const BINS = [
-  { key: 'phone',   name: '手机仓', icon: '📱' },
-  { key: 'mouse',   name: '鼠标仓', icon: '🖱️' },
-  { key: 'battery', name: '电池仓', icon: '🔋' },
+  { key: 'phone', name: '手机仓', icon: '📱' },
+  { key: 'mouse', name: '鼠标仓', icon: '🖱️' },
+  { key: 'battery', name: '电池仓', icon: '🔋' }
 ]
 
-// ===== 响应式状态 =====
-const loading       = ref(false)
-const autoRefresh   = ref(true)
+const loading = ref(false)
+const autoRefresh = ref(true)
 const lastUpdateTime = ref('')
-const errorMsg      = ref('')
+const errorMsg = ref('')
 
 const properties = ref({
-  phone:   { weight: 0, percent: 0, full: false },
-  mouse:   { weight: 0, percent: 0, full: false },
+  phone: { weight: 0, percent: 0, full: false },
+  mouse: { weight: 0, percent: 0, full: false },
   battery: { weight: 0, percent: 0, full: false },
-  online:  false,
+  online: false,
   lastReportTime: null
 })
 
-// ===== 定时器 =====
+const aiResult = ref({
+  ok: false,
+  label: '',
+  conf: 0,
+  timestamp: '',
+  imageUrl: '',
+  message: '尚无识别结果'
+})
+
 let refreshTimer = null
 const REFRESH_INTERVAL = 5000
 
-// ===== 数据获取 =====
+function normalizeAiResult(payload) {
+  const rawImageUrl = payload?.image_url ?? ''
+  let imageUrl = ''
+
+  if (rawImageUrl) {
+    imageUrl = rawImageUrl.startsWith('http')
+      ? rawImageUrl
+      : `/ai-api${rawImageUrl.startsWith('/') ? rawImageUrl : `/${rawImageUrl}`}`
+
+    if (payload?.timestamp) {
+      imageUrl = `${imageUrl}?t=${encodeURIComponent(payload.timestamp)}`
+    }
+  }
+
+  return {
+    ok: Boolean(payload?.ok),
+    label: payload?.label ?? '',
+    conf: Number(payload?.conf ?? 0),
+    timestamp: payload?.timestamp ?? '',
+    imageUrl,
+    message: payload?.message ?? ''
+  }
+}
+
 async function fetchAll() {
   if (loading.value) return
   loading.value = true
   errorMsg.value = ''
+
   try {
-    properties.value = await fetchDeviceProperties()
+    const [deviceData, latestAi] = await Promise.all([
+      fetchDeviceProperties(),
+      fetchLatestAiResult()
+    ])
+
+    properties.value = deviceData
+    aiResult.value = normalizeAiResult(latestAi)
     lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
   } catch (err) {
     errorMsg.value = `数据获取失败：${err.message}`
@@ -218,24 +293,26 @@ async function fetchAll() {
   }
 }
 
-// ===== 自动刷新控制 =====
 function startAutoRefresh() {
   if (refreshTimer) return
   refreshTimer = setInterval(fetchAll, REFRESH_INTERVAL)
 }
 
 function stopAutoRefresh() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
-  }
+  if (!refreshTimer) return
+  clearInterval(refreshTimer)
+  refreshTimer = null
 }
 
 function onAutoRefreshChange(val) {
-  val ? startAutoRefresh() : stopAutoRefresh()
+  if (val) {
+    startAutoRefresh()
+    fetchAll()
+    return
+  }
+  stopAutoRefresh()
 }
 
-// ===== 生命周期钩子 =====
 onMounted(() => {
   fetchAll()
   startAutoRefresh()
@@ -247,7 +324,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ===================== 整体布局 ===================== */
 .dashboard {
   min-height: 100vh;
   background: #f0f2f5;
@@ -255,7 +331,6 @@ onUnmounted(() => {
   overflow-x: hidden;
 }
 
-/* ===================== 顶部标题栏 ===================== */
 .header {
   display: flex;
   justify-content: space-between;
@@ -289,8 +364,15 @@ onUnmounted(() => {
   margin-right: 5px;
   vertical-align: middle;
 }
-.status-dot.online  { background: #67c23a; box-shadow: 0 0 6px #67c23a; }
-.status-dot.offline { background: #f56c6c; }
+
+.status-dot.online {
+  background: #67c23a;
+  box-shadow: 0 0 6px #67c23a;
+}
+
+.status-dot.offline {
+  background: #f56c6c;
+}
 
 .header-right {
   display: flex;
@@ -299,32 +381,54 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.update-time { font-size: 13px; color: #909399; }
-.status-tag  { font-size: 13px; }
-.auto-switch { --el-switch-on-color: #409eff; }
+.update-time {
+  font-size: 13px;
+  color: #909399;
+}
 
-/* ===================== 满溢告警横幅 ===================== */
+.status-tag {
+  font-size: 13px;
+}
+
+.auto-switch {
+  --el-switch-on-color: #409eff;
+}
+
 .full-alert {
   margin: 0 28px 12px;
   border-radius: 8px;
 }
 
-/* ===================== 卡片栅格区 ===================== */
-.card-row { padding: 0 28px; }
+.card-row {
+  padding: 0 28px;
+}
 
-/* ===================== 仓格卡片 ===================== */
 .bin-card {
   border-radius: 12px;
   transition: transform 0.2s, box-shadow 0.2s;
   margin-bottom: 20px;
 }
-.bin-card:hover { transform: translateY(-3px); }
 
-.card-full    { border: 2px solid #f56c6c; background: #fff5f5; }
-.card-warning { border: 2px solid #e6a23c; background: #fffbf0; }
-.card-normal  { border: 2px solid #67c23a; }
+.bin-card:hover,
+.data-card:hover,
+.ai-card:hover {
+  transform: translateY(-3px);
+}
 
-/* 仓格标题行 */
+.card-full {
+  border: 2px solid #f56c6c;
+  background: #fff5f5;
+}
+
+.card-warning {
+  border: 2px solid #e6a23c;
+  background: #fffbf0;
+}
+
+.card-normal {
+  border: 2px solid #67c23a;
+}
+
 .bin-header {
   display: flex;
   align-items: center;
@@ -332,7 +436,10 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
-.bin-icon { font-size: 28px; line-height: 1; }
+.bin-icon {
+  font-size: 28px;
+  line-height: 1;
+}
 
 .bin-name {
   font-size: 18px;
@@ -341,16 +448,19 @@ onUnmounted(() => {
   flex: 1;
 }
 
-.bin-status-tag { font-size: 12px; }
+.bin-status-tag {
+  font-size: 12px;
+}
 
-/* 数值区域 */
 .bin-metrics {
   display: flex;
   gap: 24px;
   margin-bottom: 16px;
 }
 
-.metric { flex: 1; }
+.metric {
+  flex: 1;
+}
 
 .metric-label {
   font-size: 12px;
@@ -386,8 +496,9 @@ onUnmounted(() => {
   margin-top: 2px;
 }
 
-/* 进度条 */
-.bin-progress { margin-bottom: 6px; }
+.bin-progress {
+  margin-bottom: 6px;
+}
 
 .progress-label {
   font-size: 11px;
@@ -395,13 +506,12 @@ onUnmounted(() => {
   text-align: right;
 }
 
-/* ===================== 设备状态卡片 ===================== */
-.data-card {
+.data-card,
+.ai-card {
   border-radius: 12px;
   transition: transform 0.2s;
   margin-bottom: 20px;
 }
-.data-card:hover { transform: translateY(-3px); }
 
 .card-inner {
   display: flex;
@@ -410,9 +520,16 @@ onUnmounted(() => {
   padding: 8px 4px;
 }
 
-.card-icon { font-size: 42px; line-height: 1; flex-shrink: 0; }
+.card-icon {
+  font-size: 42px;
+  line-height: 1;
+  flex-shrink: 0;
+}
 
-.card-body { flex: 1; min-width: 0; }
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
 
 .card-label {
   font-size: 14px;
@@ -437,16 +554,111 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.card-sub { font-size: 12px; color: #c0c4cc; margin-top: 2px; }
+.card-sub {
+  font-size: 12px;
+  color: #c0c4cc;
+  margin-top: 2px;
+}
 
-/* ===================== 错误提示 ===================== */
-.error-alert { margin: 16px 28px 0; border-radius: 8px; }
+.ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
 
-/* ===================== 底部说明栏 ===================== */
+.ai-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.ai-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.ai-content {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) minmax(180px, 1fr);
+  gap: 20px;
+}
+
+.ai-preview {
+  min-height: 260px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
+}
+
+.ai-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  object-fit: contain;
+  background: #eef1f6;
+}
+
+.ai-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  color: #909399;
+  font-size: 14px;
+}
+
+.ai-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ai-metric {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #ebeef5;
+}
+
+.ai-metric-label {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+
+.ai-metric-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+  word-break: break-word;
+}
+
+.error-alert {
+  margin: 16px 28px 0;
+  border-radius: 8px;
+}
+
 .footer {
   text-align: center;
   padding: 20px;
   font-size: 12px;
   color: #c0c4cc;
+}
+
+@media (max-width: 900px) {
+  .ai-content {
+    grid-template-columns: 1fr;
+  }
+
+  .bin-metrics {
+    flex-direction: column;
+    gap: 12px;
+  }
 }
 </style>
