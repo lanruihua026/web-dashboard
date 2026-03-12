@@ -1,6 +1,5 @@
 <template>
   <div class="dashboard">
-
     <!-- ===================== 顶部标题栏 ===================== -->
     <div class="header">
       <div class="header-left">
@@ -49,7 +48,7 @@
       <el-col v-for="bin in BINS" :key="bin.key" :xs="24" :sm="24" :lg="8">
         <el-card
           class="bin-card"
-          :class="properties[bin.key].full ? 'card-full' : 'card-normal'"
+          :class="getBinCardClass(properties[bin.key].percent, properties[bin.key].full)"
           shadow="hover"
         >
           <!-- 仓格标题 -->
@@ -57,11 +56,11 @@
             <span class="bin-icon">{{ bin.icon }}</span>
             <span class="bin-name">{{ bin.name }}</span>
             <el-tag
-              :type="properties[bin.key].full ? 'danger' : 'success'"
+              :type="getBinTagType(properties[bin.key].percent, properties[bin.key].full)"
               size="small"
               class="bin-status-tag"
             >
-              {{ properties[bin.key].full ? '已满' : '正常' }}
+              {{ getBinStatusText(properties[bin.key].percent, properties[bin.key].full) }}
             </el-tag>
           </div>
 
@@ -88,7 +87,7 @@
           <!-- 进度条 -->
           <el-progress
             :percentage="Math.min(properties[bin.key].percent, 100)"
-            :status="properties[bin.key].full ? 'exception' : ''"
+            :status="getBinProgressStatus(properties[bin.key].percent, properties[bin.key].full)"
             :stroke-width="10"
             class="bin-progress"
           />
@@ -148,6 +147,35 @@
 <script setup>
 import { Refresh } from '@element-plus/icons-vue'
 import { fetchDeviceProperties } from '../api/oneNet'
+
+// ===== 仓格状态辅助函数 =====
+// 根据满溢百分比和满溢标志返回卡片样式类
+function getBinCardClass(percent, full) {
+  if (full || percent >= 100) return 'card-full'
+  if (percent >= 80) return 'card-warning'
+  return 'card-normal'
+}
+
+// 返回状态标签类型
+function getBinTagType(percent, full) {
+  if (full || percent >= 100) return 'danger'
+  if (percent >= 80) return 'warning'
+  return 'success'
+}
+
+// 返回状态标签文字
+function getBinStatusText(percent, full) {
+  if (full || percent >= 100) return '已满'
+  if (percent >= 80) return '警告'
+  return '正常'
+}
+
+// 返回进度条状态
+function getBinProgressStatus(percent, full) {
+  if (full || percent >= 100) return 'exception'
+  if (percent >= 80) return 'warning'
+  return ''
+}
 
 // 仓格配置（key 与物模型前缀对应）
 const BINS = [
@@ -292,8 +320,9 @@ onUnmounted(() => {
 }
 .bin-card:hover { transform: translateY(-3px); }
 
-.card-full   { border: 2px solid #f56c6c; background: #fff5f5; }
-.card-normal { border: 2px solid #67c23a; }
+.card-full    { border: 2px solid #f56c6c; background: #fff5f5; }
+.card-warning { border: 2px solid #e6a23c; background: #fffbf0; }
+.card-normal  { border: 2px solid #67c23a; }
 
 /* 仓格标题行 */
 .bin-header {
