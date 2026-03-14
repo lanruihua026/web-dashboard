@@ -119,52 +119,81 @@
     </el-row>
 
     <el-row :gutter="20" class="card-row">
-      <el-col :xs="24" :lg="18">
+      <el-col :xs="24">
         <el-card class="ai-card" shadow="hover">
           <div class="ai-header">
             <div>
-              <div class="ai-title">AI 识别结果</div>
-              <div class="ai-subtitle">显示 ESP32-CAM 最新上传图片、识别类别和置信度</div>
+              <div class="ai-title">模型识别结果</div>
+              <div class="ai-subtitle">左：ESP32-CAM 实时画面 | 右：YOLO 识别结果（含边界框）</div>
             </div>
             <el-tag :type="aiResult.ok ? 'success' : 'info'" effect="light">
               {{ aiResult.ok ? '检测到目标' : '暂无目标' }}
             </el-tag>
           </div>
 
-          <div class="ai-content">
-            <div class="ai-preview">
-              <img
-                v-if="aiResult.imageUrl"
-                :src="aiResult.imageUrl"
-                alt="latest ai capture"
-                class="ai-image"
-              />
-              <div v-else class="ai-image-placeholder">暂无图片</div>
+          <div class="ai-dual-panel">
+            <!-- 左侧：实时原始画面 -->
+            <div class="ai-panel">
+              <div class="panel-label">
+                <span class="panel-dot live-dot"></span>实时采集
+              </div>
+              <div class="ai-preview">
+                <!-- 优先显示 MJPEG 流，否则降级为最新静态帧 -->
+                <img
+                  v-if="streamUrl"
+                  :src="streamUrl"
+                  alt="live stream"
+                  class="ai-image"
+                />
+                <img
+                  v-else-if="rawImageUrl"
+                  :src="rawImageUrl"
+                  alt="live capture"
+                  class="ai-image"
+                />
+                <div v-else class="ai-image-placeholder">暂无实时画面</div>
+              </div>
             </div>
 
-            <div class="ai-metadata">
-              <div class="ai-metric">
-                <span class="ai-metric-label">识别结果</span>
-                <span class="ai-metric-value">
-                  {{ aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
-                </span>
+            <!-- 右侧：带标注的识别结果 -->
+            <div class="ai-panel">
+              <div class="panel-label">
+                <span class="panel-dot result-dot"></span>识别结果
               </div>
-              <div class="ai-metric">
-                <span class="ai-metric-label">置信度</span>
-                <span class="ai-metric-value">
-                  {{ aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
-                </span>
+              <div class="ai-preview">
+                <img
+                  v-if="aiResult.imageUrl"
+                  :src="aiResult.imageUrl"
+                  alt="annotated result"
+                  class="ai-image"
+                />
+                <div v-else class="ai-image-placeholder">暂无识别图片</div>
               </div>
-              <div class="ai-metric">
-                <span class="ai-metric-label">更新时间</span>
-                <span class="ai-metric-value">
-                  {{ aiResult.timestamp ? new Date(aiResult.timestamp).toLocaleString('zh-CN') : '尚无记录' }}
-                </span>
-              </div>
-              <div class="ai-metric">
-                <span class="ai-metric-label">服务端状态</span>
-                <span class="ai-metric-value">{{ aiResult.message || '正常' }}</span>
-              </div>
+            </div>
+          </div>
+
+          <div class="ai-metadata-row">
+            <div class="ai-metric">
+              <span class="ai-metric-label">识别结果</span>
+              <span class="ai-metric-value">
+                {{ aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
+              </span>
+            </div>
+            <div class="ai-metric">
+              <span class="ai-metric-label">置信度</span>
+              <span class="ai-metric-value">
+                {{ aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
+              </span>
+            </div>
+            <div class="ai-metric">
+              <span class="ai-metric-label">更新时间</span>
+              <span class="ai-metric-value">
+                {{ aiResult.timestamp ? new Date(aiResult.timestamp).toLocaleString('zh-CN') : '尚无记录' }}
+              </span>
+            </div>
+            <div class="ai-metric">
+              <span class="ai-metric-label">服务端状态</span>
+              <span class="ai-metric-value">{{ aiResult.message || '正常' }}</span>
             </div>
           </div>
         </el-card>
@@ -189,7 +218,7 @@
 
 <script setup>
 import { Refresh } from '@element-plus/icons-vue'
-import { fetchLatestAiResult } from '../api/ai'
+import { fetchLatestAiResult, fetchCamInfo } from '../api/ai'
 import { fetchDeviceProperties } from '../api/oneNet'
 
 function getBinCardClass(percent, full) {
@@ -226,6 +255,8 @@ const loading = ref(false)
 const autoRefresh = ref(true)
 const lastUpdateTime = ref('')
 const errorMsg = ref('')
+const rawImageUrl = ref('')
+const streamUrl = ref('')
 
 const properties = ref({
   phone: { weight: 0, percent: 0, full: false },
@@ -277,13 +308,18 @@ async function fetchAll() {
   errorMsg.value = ''
 
   try {
-    const [deviceData, latestAi] = await Promise.all([
+    const [deviceData, latestAi, camInfo] = await Promise.all([
       fetchDeviceProperties(),
-      fetchLatestAiResult()
+      fetchLatestAiResult(),
+      fetchCamInfo()
     ])
 
     properties.value = deviceData
     aiResult.value = normalizeAiResult(latestAi)
+    if (camInfo?.stream_url) {
+      streamUrl.value = camInfo.stream_url
+    }
+    rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
     lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
   } catch (err) {
     errorMsg.value = `数据获取失败：${err.message}`
@@ -580,25 +616,70 @@ onUnmounted(() => {
   color: #909399;
 }
 
-.ai-content {
+.ai-dual-panel {
   display: grid;
-  grid-template-columns: minmax(280px, 2fr) minmax(180px, 1fr);
-  gap: 20px;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.panel-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.live-dot {
+  background: #67c23a;
+  box-shadow: 0 0 6px #67c23a;
+  animation: pulse 1.5s infinite;
+}
+
+.result-dot {
+  background: #409eff;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.ai-metadata-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
 
 .ai-preview {
-  min-height: 260px;
   border-radius: 12px;
   overflow: hidden;
   background: #f5f7fa;
   border: 1px solid #ebeef5;
+  flex: 1;
 }
 
 .ai-image {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 260px;
+  min-height: 240px;
   object-fit: contain;
   background: #eef1f6;
 }
@@ -607,7 +688,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 260px;
+  min-height: 240px;
   color: #909399;
   font-size: 14px;
 }
@@ -652,8 +733,12 @@ onUnmounted(() => {
 }
 
 @media (max-width: 900px) {
-  .ai-content {
+  .ai-dual-panel {
     grid-template-columns: 1fr;
+  }
+
+  .ai-metadata-row {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .bin-metrics {

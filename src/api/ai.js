@@ -9,3 +9,8 @@ export async function fetchLatestAiResult() {
   const { data } = await http.get('/latest-result')
   return data
 }
+
+export async function fetchCamInfo() {
+  const { data } = await http.get('/cam-info')
+  return data
+}
