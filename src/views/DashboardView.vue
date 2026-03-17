@@ -56,7 +56,7 @@
       </el-alert>
     </template>
 
-    <!-- ===== 垃圾桶状态卡片区（手机仓 / 鼠标仓 / 电池仓）===== -->
+    <!-- ===== 垃圾桶状态卡片区（手机仓 / 数码配件仓 / 电池仓）===== -->
     <el-row :gutter="20" class="card-row">
       <!-- 遍历 BINS 常量，每个仓位渲染一张卡片 -->
       <el-col v-for="bin in BINS" :key="bin.key" :xs="24" :sm="24" :lg="8">
@@ -285,7 +285,7 @@ function getBinProgressStatus(percent, full) {
 /** 三个回收仓的元数据，key 与 OneNET 物模型属性前缀一致 */
 const BINS = [
   { key: 'phone',   name: '手机仓', icon: '📱' },
-  { key: 'mouse',   name: '鼠标仓', icon: '🖱️' },
+  { key: 'mouse',   name: '数码配件仓', icon: '🔌' },
   { key: 'battery', name: '电池仓', icon: '🔋' }
 ]
 
