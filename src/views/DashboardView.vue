@@ -152,6 +152,7 @@
                   :src="streamUrl"
                   alt="live stream"
                   class="ai-image"
+                  @error="onStreamError"
                 />
                 <!-- 降级方案：若无推流，则使用后端最新静态帧接口 -->
                 <img
@@ -182,6 +183,7 @@
                   :src="aiResult.imageUrl"
                   alt="annotated result"
                   class="ai-image"
+                  @error="onAnnotatedImageError"
                 />
                 <div v-else class="ai-image-placeholder">暂无识别图片</div>
               </div>
@@ -379,10 +381,8 @@ function normalizeAiResult(payload) {
 // ───────────────────────────────────────────
 
 /**
- * 并发拉取所有数据源，AI 服务与设备数据相互独立：
- *   - OneNET 物模型属性（三仓重量/百分比/满溢 + 在线状态）
- *   - YOLO FastAPI 最新推理结果（单独捕获，失败不影响设备数据展示）
- *   - 摄像头信息（MJPEG 推流地址，单独捕获）
+ * 并行拉取设备数据与 AI 推理结果（两路独立，互不阻塞）。
+ * 摄像头流地址仅在挂载时初始化一次，不纳入轮询，避免重置 MJPEG 连接。
  */
 async function fetchAll() {
   // 防止并发重复请求
@@ -390,38 +390,36 @@ async function fetchAll() {
   loading.value = true
   errorMsg.value = ''
 
-  try {
-    // 设备属性是核心数据，失败则整体报错
-    const deviceData = await fetchDeviceProperties()
-    properties.value = deviceData
+  // 两路请求并行发出，总耗时取决于较慢的那一路，而非两路之和
+  const [deviceResult, aiResult_] = await Promise.allSettled([
+    fetchDeviceProperties(),
+    fetchLatestAiResult()
+  ])
+
+  if (deviceResult.status === 'fulfilled') {
+    properties.value = deviceResult.value
     lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
-  } catch (err) {
-    errorMsg.value = `设备数据获取失败：${err.message}`
-    console.error('[Dashboard] fetchDeviceProperties error:', err)
+  } else {
+    errorMsg.value = `设备数据获取失败：${deviceResult.reason?.message}`
+    console.error('[Dashboard] fetchDeviceProperties error:', deviceResult.reason)
   }
 
-  // AI 推理结果独立请求：失败时标记服务断开，不影响设备数据展示
-  try {
-    const latestAi = await fetchLatestAiResult()
+  if (aiResult_.status === 'fulfilled') {
+    const wasOffline = !aiServiceOnline.value
     aiServiceOnline.value = true
-    aiResult.value = normalizeAiResult(latestAi)
-  } catch (err) {
-    aiServiceOnline.value = false
-    // 服务断开时清空图片并标记状态，保留上次识别标签供参考
-    aiResult.value = { ...aiResult.value, ok: false, imageUrl: '', message: '断开' }
-    console.error('[Dashboard] fetchLatestAiResult error:', err)
-  }
-
-  // 摄像头信息独立请求：失败时保留上次推流地址
-  try {
-    const camInfo = await fetchCamInfo()
-    if (camInfo?.stream_url) {
-      streamUrl.value = camInfo.stream_url
-    }
+    aiResult.value = normalizeAiResult(aiResult_.value)
+    // 更新静态帧时间戳（防浏览器缓存）
     rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
-  } catch (err) {
-    // 摄像头信息失败不影响其他面板，静默处理
-    console.error('[Dashboard] fetchCamInfo error:', err)
+    // AI 后端从离线恢复，或挂载时 streamUrl 未能初始化，则重新拉取流地址
+    if ((wasOffline || !streamUrl.value)) {
+      fetchCamInfo().then(camInfo => {
+        if (camInfo?.stream_url) streamUrl.value = camInfo.stream_url
+      }).catch(() => {})
+    }
+  } else {
+    aiServiceOnline.value = false
+    aiResult.value = { ...aiResult.value, ok: false, imageUrl: '', message: '断开' }
+    console.error('[Dashboard] fetchLatestAiResult error:', aiResult_.reason)
   }
 
   loading.value = false
@@ -461,8 +459,17 @@ function onAutoRefreshChange(val) {
 // 生命周期
 // ───────────────────────────────────────────
 
-onMounted(() => {
-  // 页面挂载后立即拉取一次数据并启动自动刷新
+onMounted(async () => {
+  // rawImageUrl 无论 AI 后端是否在线都先赋值，避免后端离线时左侧完全空白
+  rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
+  // 摄像头流地址：尝试从 AI 后端获取；失败时不影响 rawImageUrl 降级显示
+  try {
+    const camInfo = await fetchCamInfo()
+    if (camInfo?.stream_url) streamUrl.value = camInfo.stream_url
+  } catch (err) {
+    console.error('[Dashboard] init fetchCamInfo error:', err)
+  }
+
   fetchAll()
   startAutoRefresh()
 })
@@ -471,6 +478,14 @@ onUnmounted(() => {
   // 组件销毁时清除定时器，防止内存泄漏与无效请求
   stopAutoRefresh()
 })
+
+function onStreamError() {
+  streamUrl.value = ''  // 降级为 rawImageUrl 静态帧
+}
+
+function onAnnotatedImageError() {
+  aiResult.value = { ...aiResult.value, imageUrl: '' }
+}
 </script>
 
 <style scoped>
