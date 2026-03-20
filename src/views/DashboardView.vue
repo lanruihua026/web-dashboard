@@ -31,7 +31,7 @@
           @change="onAutoRefreshChange"
           class="auto-switch"
         />
-        <el-button type="primary" :icon="Refresh" :loading="loading" @click="fetchAll" round>
+        <el-button type="primary" :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round>
           手动刷新
         </el-button>
       </div>
@@ -140,15 +140,9 @@
                 <span class="panel-dot" :class="properties.online ? 'live-dot' : 'offline-dot'"></span>实时采集
               </div>
               <div class="ai-preview">
-                <!-- 设备离线时显示断开提示，不尝试加载流 -->
-                <div v-if="!properties.online" class="ai-image-placeholder camera-offline">
-                  <div class="camera-offline-icon">📷</div>
-                  <div>摄像头已断开连接</div>
-                  <div class="camera-offline-sub">设备离线，视频流不可用</div>
-                </div>
-                <!-- 优先使用 MJPEG 推流地址（低延迟） -->
+                <!-- 优先使用 MJPEG 推流地址（低延迟），加载失败由 @error 降级 -->
                 <img
-                  v-else-if="streamUrl"
+                  v-if="streamUrl"
                   :src="streamUrl"
                   alt="live stream"
                   class="ai-image"
@@ -194,14 +188,14 @@
           <div class="ai-metadata-row">
             <div class="ai-metric">
               <span class="ai-metric-label">识别结果</span>
-              <span class="ai-metric-value">
-                {{ aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
+              <span class="ai-metric-value" :style="{ color: !aiServiceOnline ? '#f56c6c' : '' }">
+                {{ !aiServiceOnline ? '不可用' : aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
               </span>
             </div>
             <div class="ai-metric">
               <span class="ai-metric-label">置信度</span>
-              <span class="ai-metric-value">
-                {{ aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
+              <span class="ai-metric-value" :style="{ color: !aiServiceOnline ? '#f56c6c' : '' }">
+                {{ !aiServiceOnline ? '不可用' : aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
               </span>
             </div>
             <div class="ai-metric">
@@ -295,7 +289,9 @@ const BINS = [
 // 响应式状态
 // ───────────────────────────────────────────
 
-/** 是否正在拉取数据，用于按钮 loading 状态 */
+/** 手动刷新按钮的 loading 状态（仅手动点击时激活，不受自动轮询影响） */
+const manualLoading = ref(false)
+/** 防并发锁（自动轮询与手动请求共用） */
 const loading = ref(false)
 /** 是否开启自动刷新（与定时器联动） */
 const autoRefresh = ref(true)
@@ -306,7 +302,8 @@ const errorMsg = ref('')
 /** 降级静态帧 URL（/ai-api/latest-raw-image），每次刷新追加时间戳防缓存 */
 const rawImageUrl = ref('')
 /** MJPEG 推流地址，由 /api/cam-info 返回；空则降级为静态帧 */
-const streamUrl = ref('')
+const STREAM_URL_CACHE_KEY = 'esp32_stream_url'
+const streamUrl = ref(localStorage.getItem(STREAM_URL_CACHE_KEY) || '')
 /** YOLO FastAPI 服务是否可达；与硬件设备在线状态相互独立 */
 const aiServiceOnline = ref(true)
 
@@ -384,10 +381,11 @@ function normalizeAiResult(payload) {
  * 并行拉取设备数据与 AI 推理结果（两路独立，互不阻塞）。
  * 摄像头流地址仅在挂载时初始化一次，不纳入轮询，避免重置 MJPEG 连接。
  */
-async function fetchAll() {
+async function fetchAll(manual = false) {
   // 防止并发重复请求
   if (loading.value) return
   loading.value = true
+  if (manual) manualLoading.value = true
   errorMsg.value = ''
 
   // 两路请求并行发出，总耗时取决于较慢的那一路，而非两路之和
@@ -413,7 +411,10 @@ async function fetchAll() {
     // AI 后端从离线恢复，或挂载时 streamUrl 未能初始化，则重新拉取流地址
     if ((wasOffline || !streamUrl.value)) {
       fetchCamInfo().then(camInfo => {
-        if (camInfo?.stream_url) streamUrl.value = camInfo.stream_url
+        if (camInfo?.stream_url) {
+          streamUrl.value = camInfo.stream_url
+          localStorage.setItem(STREAM_URL_CACHE_KEY, camInfo.stream_url)
+        }
       }).catch(() => {})
     }
   } else {
@@ -423,6 +424,7 @@ async function fetchAll() {
   }
 
   loading.value = false
+  if (manual) manualLoading.value = false
 }
 
 // ───────────────────────────────────────────
@@ -465,7 +467,10 @@ onMounted(async () => {
   // 摄像头流地址：尝试从 AI 后端获取；失败时不影响 rawImageUrl 降级显示
   try {
     const camInfo = await fetchCamInfo()
-    if (camInfo?.stream_url) streamUrl.value = camInfo.stream_url
+    if (camInfo?.stream_url) {
+      streamUrl.value = camInfo.stream_url
+      localStorage.setItem(STREAM_URL_CACHE_KEY, camInfo.stream_url)
+    }
   } catch (err) {
     console.error('[Dashboard] init fetchCamInfo error:', err)
   }
