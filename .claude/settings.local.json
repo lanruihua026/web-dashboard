@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"history\\\\|chart\\\\|graph\\\\|echarts\\\\|data.*history\" /d/graduationDesign/web-dashboard/src --include=*.js --include=*.vue --include=*.ts)",
+      "Bash(git -C /d/graduationDesign/web-dashboard log --oneline -20)",
+      "Bash(npm install:*)"
+    ]
+  }
+}

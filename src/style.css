@@ -24,3 +24,54 @@ body {
   padding: 0;
   overflow-x: hidden;
 }
+
+:root {
+  --font-family-base: 'Noto Sans SC', 'Segoe UI', 'PingFang SC', sans-serif;
+
+  --color-page-bg: #eef2f7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f8fc;
+  --color-border: #e6ebf2;
+
+  --color-text-primary: #1f2a37;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #7b8794;
+
+  --color-header-bg: rgba(255, 255, 255, 0.9);
+  --color-shadow: 0 10px 30px rgba(21, 34, 50, 0.08);
+
+  --color-accent: #2f7cff;
+  --color-success: #67c23a;
+  --color-danger: #f56c6c;
+}
+
+[data-theme='dark'] {
+  --color-page-bg: #0f172a;
+  --color-surface: #111b2f;
+  --color-surface-muted: #1a253a;
+  --color-border: #24324a;
+
+  --color-text-primary: #e5ecf6;
+  --color-text-secondary: #b6c2d3;
+  --color-text-tertiary: #8da0b8;
+
+  --color-header-bg: rgba(17, 27, 47, 0.88);
+  --color-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+
+  --color-accent: #6ea8ff;
+  --color-success: #6fdc8c;
+  --color-danger: #ff8a8a;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-family-base);
+  background: var(--color-page-bg);
+  color: var(--color-text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}

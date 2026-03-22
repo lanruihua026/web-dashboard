@@ -2,7 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
 
 const routes = [
-  { path: '/', component: DashboardView }
+  { path: '/', component: DashboardView },
+  { path: '/history', component: () => import('../views/HistoryView.vue') }
 ]
 
 export default createRouter({

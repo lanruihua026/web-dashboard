@@ -24,6 +24,9 @@
       <!-- 右侧：最后更新时间 + 自动刷新开关 + 手动刷新按钮 -->
       <div class="header-right">
         <span class="update-time">更新：{{ lastUpdateTime || '尚未刷新' }}</span>
+        <el-button class="theme-toggle-btn" :icon="isDarkMode ? Sunny : Moon" @click="toggleTheme" round>
+          {{ isDarkMode ? '明亮模式' : '黑暗模式' }}
+        </el-button>
         <el-switch
           v-model="autoRefresh"
           active-text="自动刷新"
@@ -31,6 +34,9 @@
           @change="onAutoRefreshChange"
           class="auto-switch"
         />
+        <el-button type="info" plain @click="router.push('/history')" round>
+          📊 历史趋势
+        </el-button>
         <el-button type="primary" :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round>
           手动刷新
         </el-button>
@@ -236,11 +242,17 @@
 
 <script setup>
 // Element Plus 刷新图标
-import { Refresh } from '@element-plus/icons-vue'
+import { Moon, Refresh, Sunny } from '@element-plus/icons-vue'
 // AI 推理服务 API：获取最新识别结果、摄像头信息
 import { fetchLatestAiResult, fetchCamInfo } from '../api/ai'
 // OneNET 平台 API：获取设备物模型属性
 import { fetchDeviceProperties } from '../api/oneNet'
+// 历史数据存储：每次成功获取属性后追加数据点
+import { addDataPoint } from '../store/historyStore'
+
+const router = useRouter()
+const isDarkMode = inject('isDarkMode', computed(() => false))
+const toggleTheme = inject('toggleTheme', () => {})
 
 // ───────────────────────────────────────────
 // 辅助函数：根据百分比/满溢状态计算展示样式
@@ -397,6 +409,7 @@ async function fetchAll(manual = false) {
   if (deviceResult.status === 'fulfilled') {
     properties.value = deviceResult.value
     lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
+    addDataPoint(deviceResult.value)
   } else {
     errorMsg.value = `设备数据获取失败：${deviceResult.reason?.message}`
     console.error('[Dashboard] fetchDeviceProperties error:', deviceResult.reason)
@@ -497,7 +510,7 @@ function onAnnotatedImageError() {
 /* ===== 根容器 ===== */
 .dashboard {
   min-height: 100vh;
-  background: #f0f2f5;
+  background: var(--color-page-bg);
   padding: 70px 0 40px;
 }
 
@@ -509,8 +522,10 @@ function onAnnotatedImageError() {
   flex-wrap: wrap;
   gap: 12px;
   padding: 16px 28px;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--color-shadow);
+  backdrop-filter: blur(8px);
   position: fixed;
   top: 0;
   left: 0;
@@ -533,14 +548,14 @@ function onAnnotatedImageError() {
 
 .device-info {
   font-size: 13px;
-  color: #606266;
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
 .title {
   font-size: 20px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
   letter-spacing: 0.5px;
 }
 
@@ -572,7 +587,16 @@ function onAnnotatedImageError() {
 
 .update-time {
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-tertiary);
+}
+
+.theme-toggle-btn {
+  --el-button-bg-color: var(--color-surface);
+  --el-button-border-color: var(--color-border);
+  --el-button-text-color: var(--color-text-secondary);
+  --el-button-hover-bg-color: var(--color-surface-muted);
+  --el-button-hover-border-color: var(--color-accent);
+  --el-button-hover-text-color: var(--color-accent);
 }
 
 .status-tag {
@@ -581,7 +605,7 @@ function onAnnotatedImageError() {
 
 /* 自动刷新开关主题色 */
 .auto-switch {
-  --el-switch-on-color: #409eff;
+  --el-switch-on-color: var(--color-accent);
 }
 
 /* ===== 满溢警告横幅 ===== */
@@ -642,7 +666,7 @@ function onAnnotatedImageError() {
 .bin-name {
   font-size: 18px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
   flex: 1;
 }
 
@@ -663,7 +687,7 @@ function onAnnotatedImageError() {
 
 .metric-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-tertiary);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -680,20 +704,20 @@ function onAnnotatedImageError() {
 .value-number {
   font-size: 32px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
   line-height: 1;
 }
 
 .value-unit {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
 /* 物模型属性名提示，灰色小字 */
 .metric-sub {
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
@@ -703,7 +727,7 @@ function onAnnotatedImageError() {
 
 .progress-label {
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--color-text-tertiary);
   text-align: right;
 }
 
@@ -726,13 +750,13 @@ function onAnnotatedImageError() {
 .ai-title {
   font-size: 18px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
 }
 
 .ai-subtitle {
   margin-top: 4px;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-tertiary);
 }
 
 /* 双列等宽图像区 */
@@ -755,7 +779,7 @@ function onAnnotatedImageError() {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
 
 /* 面板状态小圆点 */
@@ -776,12 +800,12 @@ function onAnnotatedImageError() {
 
 /* 设备离线时灰色静止点 */
 .offline-dot {
-  background: #909399;
+  background: var(--color-text-tertiary);
 }
 
 /* 识别结果蓝色点 */
 .result-dot {
-  background: #409eff;
+  background: var(--color-accent);
 }
 
 /* 脉动动画：模拟直播呼吸效果 */
@@ -801,8 +825,8 @@ function onAnnotatedImageError() {
 .ai-preview {
   border-radius: 12px;
   overflow: hidden;
-  background: #f5f7fa;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   flex: 1;
 }
 
@@ -813,7 +837,7 @@ function onAnnotatedImageError() {
   height: 100%;
   min-height: 240px;
   object-fit: contain;
-  background: #eef1f6;
+  background: var(--color-surface-muted);
 }
 
 /* 占位符：居中提示文字 */
@@ -822,7 +846,7 @@ function onAnnotatedImageError() {
   align-items: center;
   justify-content: center;
   min-height: 240px;
-  color: #909399;
+  color: var(--color-text-tertiary);
   font-size: 14px;
 }
 
@@ -830,8 +854,8 @@ function onAnnotatedImageError() {
 .camera-offline {
   flex-direction: column;
   gap: 8px;
-  background: #f5f5f5;
-  color: #606266;
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
 }
 
 /* 离线图标去饱和 + 降低透明度 */
@@ -843,7 +867,7 @@ function onAnnotatedImageError() {
 
 .camera-offline-sub {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--color-text-tertiary);
 }
 
 /* 未使用的纵向布局备用，保留供扩展 */
@@ -857,21 +881,21 @@ function onAnnotatedImageError() {
 .ai-metric {
   padding: 14px 16px;
   border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
 }
 
 .ai-metric-label {
   display: block;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-tertiary);
   margin-bottom: 6px;
 }
 
 .ai-metric-value {
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--color-text-primary);
   word-break: break-word;  /* 长文本（如 URL）自动换行 */
 }
 
@@ -886,7 +910,7 @@ function onAnnotatedImageError() {
   text-align: center;
   padding: 20px;
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--color-text-tertiary);
 }
 
 /* ===== 响应式：窄屏适配 ===== */
