@@ -251,19 +251,66 @@ export async function fetchDeviceProperties() {
 }
 
 /**
- * 通过 OneNET REST API 向设备下发满溢重量阈值与 AI 识别置信度阈值。
+ * REST POST /thingmodel/set-device-property 与 MQTT OneJSON 不同：
+ * params 为「扁平」结构，标识符直接对应 JSON 原生类型（见官方示例：humidity 为 number、temperature 为 number）。
+ * 不要使用 { identifier: { value: x } }，否则平台按错误结构解析会报 int32/float type error。
  *
- * OneNET AIoT 物模型属性设置接口：
- *   POST /thingmodel/set-device-property
- *
- * 下发后，OneNET 平台将通过 MQTT thing/property/set 推送给 ESP32-S3，
- * 设备收到后更新运行时变量并持久化到 NVS。
- *
- * 前提：物模型中已定义可写属性 overflow_threshold_g、ai_conf_threshold。
- *
+ * 注意：code===0 只表示平台已受理下发；控制台「设备最新数据」依赖物模型 property/post 上报。
+ * 设备端须同时解析扁平与标准 params.xxx.value 下行，否则会静默忽略阈值，云端查询也一直显示旧上报值。
+ */
+function oneNetInt32Param(v) {
+  const n = Math.round(Number(v))
+  if (!Number.isFinite(n)) throw new Error('invalid int32 threshold')
+  return n
+}
+
+/** 浮点物模型：传 JSON number，保留两位小数避免浮点噪声 */
+function oneNetFloatParam(v) {
+  const n = parseFloat(v)
+  if (!Number.isFinite(n)) throw new Error('invalid float threshold')
+  return parseFloat(n.toFixed(2))
+}
+
+/**
+ * 向设备下发满溢重量阈值（独立接口，避免 ai_conf_threshold 失败时也阻断此项下发）。
  * @param {number} thresholdG - 满溢重量阈值（克），有效范围 100~5000
- * @param {number} aiConf - AI 置信度阈值（0~1）
- * @returns {Promise<void>}
+ */
+export async function setOverflowThresholdOnDevice(thresholdG) {
+  const headers = await authHeader()
+  const body = {
+    product_id: ONENET_PRODUCT_ID,
+    device_name: ONENET_DEVICE_NAME,
+    params: {
+      overflow_threshold_g: oneNetInt32Param(thresholdG)
+    }
+  }
+  console.log('[OneNET] setOverflowThresholdOnDevice body:', body)
+  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
+  console.log('[OneNET] setOverflowThresholdOnDevice response:', data)
+  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
+}
+
+/**
+ * 向设备下发 AI 识别置信度阈值（独立接口）。
+ * @param {number} aiConf - 置信度阈值（0~1）
+ */
+export async function setAiConfThresholdOnDevice(aiConf) {
+  const headers = await authHeader()
+  const body = {
+    product_id: ONENET_PRODUCT_ID,
+    device_name: ONENET_DEVICE_NAME,
+    params: {
+      ai_conf_threshold: oneNetFloatParam(aiConf)
+    }
+  }
+  console.log('[OneNET] setAiConfThresholdOnDevice body:', body)
+  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
+  console.log('[OneNET] setAiConfThresholdOnDevice response:', data)
+  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
+}
+
+/**
+ * @deprecated 使用 setOverflowThresholdOnDevice / setAiConfThresholdOnDevice 代替。
  */
 export async function setDeviceThresholds(thresholdG, aiConf) {
   const headers = await authHeader()
@@ -271,16 +318,12 @@ export async function setDeviceThresholds(thresholdG, aiConf) {
     product_id: ONENET_PRODUCT_ID,
     device_name: ONENET_DEVICE_NAME,
     params: {
-      overflow_threshold_g: { value: thresholdG },
-      ai_conf_threshold: { value: aiConf }
+      overflow_threshold_g: oneNetInt32Param(thresholdG),
+      ai_conf_threshold: oneNetFloatParam(aiConf)
     }
   }
   console.log('[OneNET] setDeviceThresholds request body:', body)
-  try {
-    const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
-    console.log('[OneNET] setDeviceThresholds response:', data)
-  } catch (err) {
-    console.error('[OneNET] setDeviceThresholds error — status:', err?.response?.status, 'body:', err?.response?.data)
-    throw err
-  }
+  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
+  console.log('[OneNET] setDeviceThresholds response:', data)
+  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
 }

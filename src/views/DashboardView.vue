@@ -52,18 +52,18 @@
         <el-form-item>
           <template #label>
             <span>识别置信度阈值</span>
-            <span style="color: var(--el-color-info); font-size: 12px; margin-left: 8px;">当前：{{ Math.round(settingsForm.confThreshold * 100) }}%</span>
+            <span style="color: var(--el-color-info); font-size: 12px; margin-left: 8px;">当前：{{ settingsForm.confThreshold.toFixed(2) }}（0~1）</span>
           </template>
-          <el-slider
+          <el-input-number
             v-model="settingsForm.confThreshold"
-            :min="0.30"
-            :max="0.95"
-            :step="0.05"
-            :format-tooltip="(v) => Math.round(v * 100) + '%'"
-            show-stops
+            :min="0"
+            :max="1"
+            :step="0.01"
+            :precision="2"
+            style="width: 100%"
           />
           <div style="font-size: 12px; color: var(--el-color-info-light-3); margin-top: 4px;">
-            低于此阈值的检测结果将被推理服务忽略；保存时同时通过 OneNET 下发 ai_conf_threshold，由 ESP32-S3 控制舵机是否动作
+            0.00~1.00，低于此值的检测结果不触发舵机分拣；保存后同步到推理服务与 ESP32-S3（物模型 ai_conf_threshold）
           </div>
         </el-form-item>
         <el-form-item>
@@ -299,7 +299,7 @@ import { ElMessage } from 'element-plus'
 // AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
 import { fetchLatestAiResult, fetchCamInfo, fetchConfig, updateConfig } from '../api/ai'
 // OneNET 平台 API：获取设备物模型属性、下发满溢阈值
-import { fetchDeviceProperties, setDeviceThresholds } from '../api/oneNet'
+import { fetchDeviceProperties, setOverflowThresholdOnDevice, setAiConfThresholdOnDevice } from '../api/oneNet'
 // 历史数据存储：每次成功获取属性后追加数据点
 import { addDataPoint } from '../store/historyStore'
 
@@ -686,10 +686,13 @@ function openSettings() {
     console.warn('[Settings] fetchDeviceProperties:', devRes.reason?.message)
     if (cfgRes.status === 'fulfilled') {
       const cfg = cfgRes.value
-      if (p.overflowThresholdG == null || !Number.isFinite(p.overflowThresholdG)) {
+      // Use properties.value (not the stale `p` snapshot) so the check reflects any
+      // auto-refresh updates that arrived while the async requests were in-flight.
+      const current = properties.value
+      if (current.overflowThresholdG == null || !Number.isFinite(current.overflowThresholdG)) {
         settingsForm.value.overflowThresholdG = cfg.overflow_threshold_g ?? settingsForm.value.overflowThresholdG
       }
-      if (p.aiConfThreshold == null || !Number.isFinite(p.aiConfThreshold)) {
+      if (current.aiConfThreshold == null || !Number.isFinite(current.aiConfThreshold)) {
         settingsForm.value.confThreshold = cfg.conf_threshold ?? settingsForm.value.confThreshold
       }
     } else {
@@ -702,45 +705,64 @@ function openSettings() {
 /**
  * 保存设置：
  * 1. 写入 server.py config.json（识别阈值 + 满溢阈值）
- * 2. 通过 OneNET API 将满溢阈值与 AI 置信度阈值下发到 ESP32-S3
+ * 2. 独立下发 overflow_threshold_g 到 ESP32-S3（必须成功）
+ * 3. 独立下发 ai_conf_threshold 到 ESP32-S3（失败时仅警告，不阻断保存流程）
  */
 async function saveSettings() {
   settingsSaving.value = true
   settingsErrorMsg.value = ''
+
+  const overflowG = settingsForm.value.overflowThresholdG
+  const aiConf = parseFloat(parseFloat(settingsForm.value.confThreshold).toFixed(2))
+
   try {
-    // Step 1: 写入 server.py 持久化
-    const payload = {
-      conf_threshold: settingsForm.value.confThreshold,
-      overflow_threshold_g: settingsForm.value.overflowThresholdG
-    }
+    // Step 1: 写入推理服务持久化配置
+    const payload = { conf_threshold: aiConf, overflow_threshold_g: overflowG }
     console.log('[Settings] updateConfig payload:', payload)
-    const cfgResult = await updateConfig(payload)
-    console.log('[Settings] updateConfig ok:', cfgResult)
-
-    // Step 2: 通过 OneNET MQTT 同步阈值到硬件
-    try {
-      console.log('[Settings] setDeviceThresholds:', settingsForm.value.overflowThresholdG, settingsForm.value.confThreshold)
-      await setDeviceThresholds(settingsForm.value.overflowThresholdG, settingsForm.value.confThreshold)
-      console.log('[Settings] setDeviceThresholds ok')
-    } catch (mqttErr) {
-      console.warn('[Settings] setDeviceThresholds failed:', mqttErr?.response?.status, mqttErr?.response?.data ?? mqttErr?.message)
-      // server.py 已保存成功，关闭对话框并提示部分成功
-      settingsVisible.value = false
-      ElMessage.warning('配置已保存到推理服务，但同步到设备失败（设备可能离线，重连后自动生效）')
-      return
-    }
-
-    settingsVisible.value = false
-    ElMessage.success('设置已保存并同步到设备')
+    await updateConfig(payload)
+    console.log('[Settings] updateConfig ok')
   } catch (err) {
-    console.error('[Settings] saveSettings error:', err?.response?.status, err?.response?.data ?? err?.message)
-    const detail = err?.response?.data?.detail ?? err?.response?.data?.msg ?? err?.message ?? '请检查推理服务是否正常运行'
-    const msg = `保存失败：${detail}`
-    settingsErrorMsg.value = msg   // 对话框内联显示，确保用户看到错误
+    console.error('[Settings] updateConfig error:', err?.response?.data ?? err?.message)
+    const detail = err?.response?.data?.detail ?? err?.message ?? '请检查推理服务是否正常运行'
+    const msg = `保存失败（推理服务）：${detail}`
+    settingsErrorMsg.value = msg
     ElMessage.error(msg)
-  } finally {
     settingsSaving.value = false
-    saveDashboardCache()
+    return
+  }
+
+  // Step 2: 独立下发满溢阈值（必须成功才算完整同步）
+  let overflowOk = false
+  try {
+    await setOverflowThresholdOnDevice(overflowG)
+    console.log('[Settings] setOverflowThresholdOnDevice ok')
+    overflowOk = true
+  } catch (err) {
+    console.warn('[Settings] setOverflowThresholdOnDevice failed:', err?.message)
+  }
+
+  // Step 3: 独立下发置信度阈值（失败仅警告，可能是物模型未更新导致）
+  let aiConfOk = false
+  try {
+    await setAiConfThresholdOnDevice(aiConf)
+    console.log('[Settings] setAiConfThresholdOnDevice ok')
+    aiConfOk = true
+  } catch (err) {
+    console.warn('[Settings] setAiConfThresholdOnDevice failed:', err?.message)
+  }
+
+  settingsVisible.value = false
+  settingsSaving.value = false
+  saveDashboardCache()
+
+  if (overflowOk && aiConfOk) {
+    ElMessage.success('设置已保存并同步到推理服务与设备')
+  } else if (!overflowOk && !aiConfOk) {
+    ElMessage.warning('已保存到推理服务，但两项阈值均未同步到设备（设备可能离线）')
+  } else if (!overflowOk) {
+    ElMessage.warning('置信度已同步到设备，但满溢阈值未同步（设备可能离线，重连后自动生效）')
+  } else {
+    ElMessage.warning('满溢阈值已同步到设备，但置信度未同步到设备（请确认 OneNET 物模型已添加 ai_conf_threshold 属性）')
   }
 }
 </script>
