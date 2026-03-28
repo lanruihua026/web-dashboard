@@ -1,23 +1,13 @@
 /* ===================================================
  * 全局基础样式重置
- * 作用范围：整个应用
  * =================================================== */
 
-/*
- * 统一盒模型：padding 和 border 计入元素宽高，
- * 避免子元素撑破父容器导致意外溢出。
- */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
-/*
- * 禁止页面级横向滚动。
- * 根本原因：Element Plus 的 el-row 使用负 margin（gutter/2）
- * 扩展行宽度，若最外层容器未裁剪，负 margin 会超出视口右边缘。
- */
 html,
 body {
   margin: 0;
@@ -25,44 +15,99 @@ body {
   overflow-x: hidden;
 }
 
+/* ===================================================
+ * 亮色主题（默认）
+ * 设计基调：冷白 + 蓝灰层次，清爽专业
+ * =================================================== */
 :root {
   --font-family-base: 'Noto Sans SC', 'Segoe UI', 'PingFang SC', sans-serif;
 
-  --color-page-bg: #eef2f7;
-  --color-surface: #ffffff;
-  --color-surface-muted: #f6f8fc;
-  --color-border: #e6ebf2;
+  /* 背景层次：page → surface-muted → surface → surface-elevated */
+  --color-page-bg:         #eef2f7;
+  --color-surface:         #ffffff;
+  --color-surface-muted:   #f3f6fb;
+  --color-surface-elevated: #ffffff;
 
-  --color-text-primary: #1f2a37;
-  --color-text-secondary: #4b5563;
-  --color-text-tertiary: #7b8794;
+  /* 边框 */
+  --color-border:        #dde3ee;
+  --color-border-strong: #c5cfe0;
 
-  --color-header-bg: rgba(255, 255, 255, 0.9);
-  --color-shadow: 0 10px 30px rgba(21, 34, 50, 0.08);
+  /* 文本层次 */
+  --color-text-primary:   #1a2332;
+  --color-text-secondary: #445566;
+  --color-text-tertiary:  #7a8ea6;
+  --color-text-disabled:  #aab6c8;
 
-  --color-accent: #2f7cff;
-  --color-success: #67c23a;
-  --color-danger: #f56c6c;
+  /* 导航栏 */
+  --color-header-bg: rgba(255, 255, 255, 0.92);
+  --color-shadow:    0 2px 20px rgba(15, 30, 55, 0.07), 0 1px 4px rgba(15, 30, 55, 0.04);
+
+  /* 主色 */
+  --color-accent:       #2d7cf6;
+  --color-accent-light: rgba(45, 124, 246, 0.10);
+  --color-success:      #18a058;
+  --color-success-bg:   rgba(24, 160, 88, 0.08);
+  --color-warning:      #d97706;
+  --color-warning-bg:   rgba(217, 119, 6, 0.08);
+  --color-danger:       #e0424a;
+  --color-danger-bg:    rgba(224, 66, 74, 0.08);
+
+  /* 仓位状态卡片背景 */
+  --card-normal-border:  #18a058;
+  --card-normal-bg:      #ffffff;
+  --card-warning-border: #d97706;
+  --card-warning-bg:     #fffdf5;
+  --card-full-border:    #e0424a;
+  --card-full-bg:        #fff8f8;
 }
 
+/* ===================================================
+ * 暗色主题
+ * 设计基调：深蓝黑 + 冷灰层次，沉浸专业
+ * =================================================== */
 [data-theme='dark'] {
-  --color-page-bg: #0f172a;
-  --color-surface: #111b2f;
-  --color-surface-muted: #1a253a;
-  --color-border: #24324a;
+  /* 背景层次：深度递进，确保各层视觉可区分 */
+  --color-page-bg:          #0c1220;
+  --color-surface:          #131e30;
+  --color-surface-muted:    #1c2a3f;
+  --color-surface-elevated: #1f3148;
 
-  --color-text-primary: #e5ecf6;
-  --color-text-secondary: #b6c2d3;
-  --color-text-tertiary: #8da0b8;
+  /* 边框 */
+  --color-border:        #263548;
+  --color-border-strong: #344a64;
 
-  --color-header-bg: rgba(17, 27, 47, 0.88);
-  --color-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* 文本层次 */
+  --color-text-primary:   #dce8f8;
+  --color-text-secondary: #9db4cc;
+  --color-text-tertiary:  #6a87a4;
+  --color-text-disabled:  #425a74;
 
-  --color-accent: #6ea8ff;
-  --color-success: #6fdc8c;
-  --color-danger: #ff8a8a;
+  /* 导航栏 */
+  --color-header-bg: rgba(13, 20, 34, 0.90);
+  --color-shadow:    0 2px 20px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.3);
+
+  /* 主色（暗色模式下适度提亮，保证对比度） */
+  --color-accent:       #5b9ef8;
+  --color-accent-light: rgba(91, 158, 248, 0.14);
+  --color-success:      #36c472;
+  --color-success-bg:   rgba(54, 196, 114, 0.10);
+  --color-warning:      #f59e0b;
+  --color-warning-bg:   rgba(245, 158, 11, 0.10);
+  --color-danger:       #f07378;
+  --color-danger-bg:    rgba(240, 115, 120, 0.10);
+
+  /* 仓位状态卡片背景 */
+  --card-normal-border:  #36c472;
+  --card-normal-bg:      #131e30;
+  --card-warning-border: #f59e0b;
+  --card-warning-bg:     #17200e;
+  --card-full-border:    #f07378;
+  --card-full-bg:        #1e1318;
 }
 
+/* ===================================================
+ * 基础样式
+ * =================================================== */
 html,
 body,
 #app {
@@ -73,5 +118,88 @@ body {
   font-family: var(--font-family-base);
   background: var(--color-page-bg);
   color: var(--color-text-primary);
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ===================================================
+ * Element Plus 全局暗色适配
+ * =================================================== */
+
+/* 卡片背景 */
+[data-theme='dark'] .el-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] .el-card__body {
+  color: var(--color-text-primary);
+}
+
+/* 进度条轨道 */
+[data-theme='dark'] .el-progress-bar__outer {
+  background: var(--color-surface-muted);
+}
+
+/* Alert */
+[data-theme='dark'] .el-alert {
+  border: 1px solid;
+}
+
+[data-theme='dark'] .el-alert--error {
+  background: var(--color-danger-bg);
+  border-color: rgba(240, 115, 120, 0.3);
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] .el-alert--warning {
+  background: var(--color-warning-bg);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--color-text-primary);
+}
+
+/* Switch */
+[data-theme='dark'] .el-switch__core {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
+}
+
+/* Tag */
+[data-theme='dark'] .el-tag--success {
+  background: var(--color-success-bg);
+  border-color: rgba(54, 196, 114, 0.3);
+  color: var(--color-success);
+}
+
+[data-theme='dark'] .el-tag--danger {
+  background: var(--color-danger-bg);
+  border-color: rgba(240, 115, 120, 0.3);
+  color: var(--color-danger);
+}
+
+[data-theme='dark'] .el-tag--warning {
+  background: var(--color-warning-bg);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--color-warning);
+}
+
+[data-theme='dark'] .el-tag--info {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+/* Dropdown / MessageBox / 弹窗 */
+[data-theme='dark'] .el-overlay-dialog .el-message-box {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] .el-message-box__title {
+  color: var(--color-text-primary);
+}
+
+[data-theme='dark'] .el-message-box__content {
+  color: var(--color-text-secondary);
 }

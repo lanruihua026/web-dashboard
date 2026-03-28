@@ -17,7 +17,7 @@
         </el-tag>
         <span class="device-info">📟 Box1</span>
         <span class="device-info" v-if="properties.lastReportTime">
-          上报：{{ new Date(properties.lastReportTime).toLocaleString('zh-CN') }}
+          最后在线：{{ new Date(properties.lastReportTime).toLocaleString('zh-CN') }}
         </span>
       </div>
 
@@ -37,11 +37,66 @@
         <el-button type="info" plain @click="router.push('/history')" round>
           📊 历史趋势
         </el-button>
+        <el-button type="warning" plain @click="openSettings" round>
+          ⚙️ 系统设置
+        </el-button>
         <el-button type="primary" :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round>
           手动刷新
         </el-button>
       </div>
     </div>
+
+    <!-- ===== 系统设置对话框 ===== -->
+    <el-dialog v-model="settingsVisible" title="系统设置" width="420px" :close-on-click-modal="false">
+      <el-form label-position="top" :model="settingsForm">
+        <el-form-item>
+          <template #label>
+            <span>识别置信度阈值</span>
+            <span style="color: var(--el-color-info); font-size: 12px; margin-left: 8px;">当前：{{ Math.round(settingsForm.confThreshold * 100) }}%</span>
+          </template>
+          <el-slider
+            v-model="settingsForm.confThreshold"
+            :min="0.30"
+            :max="0.95"
+            :step="0.05"
+            :format-tooltip="(v) => Math.round(v * 100) + '%'"
+            show-stops
+          />
+          <div style="font-size: 12px; color: var(--el-color-info-light-3); margin-top: 4px;">
+            低于此阈值的检测结果将被推理服务忽略；保存时同时通过 OneNET 下发 ai_conf_threshold，由 ESP32-S3 控制舵机是否动作
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <template #label>
+            <span>满溢重量阈值</span>
+            <span style="color: var(--el-color-info); font-size: 12px; margin-left: 8px;">单位：g</span>
+          </template>
+          <el-input-number
+            v-model="settingsForm.overflowThresholdG"
+            :min="100"
+            :max="5000"
+            :step="50"
+            style="width: 100%"
+          />
+          <div style="font-size: 12px; color: var(--el-color-info-light-3); margin-top: 4px;">
+            超过此重量触发满溢警报；与上方置信度阈值一并经 OneNET 同步到设备（物模型 overflow_threshold_g / ai_conf_threshold）
+          </div>
+        </el-form-item>
+      </el-form>
+      <!-- 内联错误提示：当 ElMessage toast 不可用时的兜底反馈 -->
+      <el-alert
+        v-if="settingsErrorMsg"
+        :title="settingsErrorMsg"
+        type="error"
+        :closable="false"
+        show-icon
+        style="margin-top: 12px;"
+      />
+      <template #footer>
+        <el-button @click="settingsVisible = false">取消</el-button>
+        <el-button type="primary" :loading="settingsSaving" @click="saveSettings">保存</el-button>
+      </template>
+    </el-dialog>
 
     <!-- ===== 满溢警告横幅（仅在某仓满溢时显示）===== -->
     <template v-for="bin in BINS" :key="bin.key">
@@ -92,8 +147,6 @@
                 <span class="value-number">{{ properties[bin.key].weight }}</span>
                 <span class="value-unit">g</span>
               </div>
-              <!-- 对应 OneNET 物模型属性名 -->
-              <div class="metric-sub">物模型：{{ bin.key }}_weight</div>
             </div>
             <div class="metric">
               <div class="metric-label">满溢百分比</div>
@@ -101,7 +154,6 @@
                 <span class="value-number">{{ properties[bin.key].percent.toFixed(1) }}</span>
                 <span class="value-unit">%</span>
               </div>
-              <div class="metric-sub">物模型：{{ bin.key }}_percent</div>
             </div>
           </div>
 
@@ -112,9 +164,8 @@
             :stroke-width="10"
             class="bin-progress"
           />
-          <!-- 容量基准说明，1000 g 为硬件侧满载上限 -->
           <div class="progress-label">
-            容量上限 1000 g | 物模型：{{ bin.key }}_full
+            容量上限 {{ settingsForm.overflowThresholdG }} g
           </div>
         </el-card>
       </el-col>
@@ -243,10 +294,12 @@
 <script setup>
 // Element Plus 刷新图标
 import { Moon, Refresh, Sunny } from '@element-plus/icons-vue'
-// AI 推理服务 API：获取最新识别结果、摄像头信息
-import { fetchLatestAiResult, fetchCamInfo } from '../api/ai'
-// OneNET 平台 API：获取设备物模型属性
-import { fetchDeviceProperties } from '../api/oneNet'
+// ElMessage 显式导入，不依赖 auto-import（避免 Vite transform 失效时静默无反馈）
+import { ElMessage } from 'element-plus'
+// AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
+import { fetchLatestAiResult, fetchCamInfo, fetchConfig, updateConfig } from '../api/ai'
+// OneNET 平台 API：获取设备物模型属性、下发满溢阈值
+import { fetchDeviceProperties, setDeviceThresholds } from '../api/oneNet'
 // 历史数据存储：每次成功获取属性后追加数据点
 import { addDataPoint } from '../store/historyStore'
 
@@ -297,6 +350,57 @@ const BINS = [
   { key: 'battery', name: '电池仓', icon: '🔋' }
 ]
 
+/** 仪表盘最新数据本地持久化（刷新后恢复，避免回到全零初始态） */
+const DASHBOARD_CACHE_KEY = 'dashboard_live_cache_v1'
+
+function loadDashboardCache() {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_CACHE_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    if (!data || typeof data !== 'object') return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+function mergeCachedProperties(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  const bin = (key) => ({
+    weight: Number(d[key]?.weight ?? 0),
+    percent: Number(d[key]?.percent ?? 0),
+    full: Boolean(d[key]?.full)
+  })
+  return {
+    phone: bin('phone'),
+    mouse: bin('mouse'),
+    battery: bin('battery'),
+    online: Boolean(d.online),
+    lastReportTime: d.lastReportTime ?? null,
+    overflowThresholdG:
+      d.overflowThresholdG != null && d.overflowThresholdG !== ''
+        ? Number(d.overflowThresholdG)
+        : null,
+    aiConfThreshold:
+      d.aiConfThreshold != null && d.aiConfThreshold !== '' ? Number(d.aiConfThreshold) : null
+  }
+}
+
+function mergeCachedAiResult(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {}
+  return {
+    ok: Boolean(d.ok),
+    label: String(d.label ?? ''),
+    conf: Number(d.conf ?? 0),
+    timestamp: String(d.timestamp ?? ''),
+    imageUrl: String(d.imageUrl ?? ''),
+    message: String(d.message ?? '尚无识别结果')
+  }
+}
+
+const dashboardSnapshot = loadDashboardCache()
+
 // ───────────────────────────────────────────
 // 响应式状态
 // ───────────────────────────────────────────
@@ -308,7 +412,9 @@ const loading = ref(false)
 /** 是否开启自动刷新（与定时器联动） */
 const autoRefresh = ref(true)
 /** 最后一次成功刷新的本地时间字符串 */
-const lastUpdateTime = ref('')
+const lastUpdateTime = ref(
+  typeof dashboardSnapshot?.lastUpdateTime === 'string' ? dashboardSnapshot.lastUpdateTime : ''
+)
 /** 全局错误提示文本，非空时显示警告横幅 */
 const errorMsg = ref('')
 /** 降级静态帧 URL（/ai-api/latest-raw-image），每次刷新追加时间戳防缓存 */
@@ -319,24 +425,22 @@ const streamUrl = ref(localStorage.getItem(STREAM_URL_CACHE_KEY) || '')
 /** YOLO FastAPI 服务是否可达；与硬件设备在线状态相互独立 */
 const aiServiceOnline = ref(true)
 
-/** OneNET 物模型属性，包含三个仓位数据 + 设备在线状态 */
-const properties = ref({
-  phone:   { weight: 0, percent: 0, full: false },
-  mouse:   { weight: 0, percent: 0, full: false },
-  battery: { weight: 0, percent: 0, full: false },
-  online: false,
-  lastReportTime: null  // ISO 8601 字符串，由平台返回
+// ───────────────────────────────────────────
+// 系统设置对话框状态
+// ───────────────────────────────────────────
+const settingsVisible = ref(false)
+const settingsSaving = ref(false)
+const settingsErrorMsg = ref('')   // 对话框内联错误文本（ElMessage 失效时的兜底显示）
+const settingsForm = ref({
+  confThreshold: Number(dashboardSnapshot?.settingsForm?.confThreshold ?? 0.70),
+  overflowThresholdG: Number(dashboardSnapshot?.settingsForm?.overflowThresholdG ?? 1000)
 })
 
+/** OneNET 物模型属性，包含三个仓位数据 + 设备在线状态 + 设备上报阈值 */
+const properties = ref(mergeCachedProperties(dashboardSnapshot?.properties))
+
 /** YOLO FastAPI 最新推理结果 */
-const aiResult = ref({
-  ok: false,       // 是否检测到目标
-  label: '',       // 目标类别名称
-  conf: 0,         // 置信度（0~1）
-  timestamp: '',   // 推理时间戳
-  imageUrl: '',    // 标注图完整 URL（含缓存破坏参数）
-  message: '尚无识别结果'
-})
+const aiResult = ref(mergeCachedAiResult(dashboardSnapshot?.aiResult))
 
 // ───────────────────────────────────────────
 // 定时器
@@ -385,6 +489,25 @@ function normalizeAiResult(payload) {
   }
 }
 
+/**
+ * 将当前设备数据、设置表单、识别结果等写入 localStorage，刷新后由 loadDashboardCache 恢复。
+ */
+function saveDashboardCache() {
+  try {
+    const payload = {
+      v: 1,
+      savedAt: Date.now(),
+      properties: properties.value,
+      settingsForm: { ...settingsForm.value },
+      lastUpdateTime: lastUpdateTime.value,
+      aiResult: { ...aiResult.value }
+    }
+    localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(payload))
+  } catch (e) {
+    console.warn('[Dashboard] localStorage save failed:', e)
+  }
+}
+
 // ───────────────────────────────────────────
 // 数据拉取
 // ───────────────────────────────────────────
@@ -410,6 +533,16 @@ async function fetchAll(manual = false) {
     properties.value = deviceResult.value
     lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
     addDataPoint(deviceResult.value)
+    // 未打开设置且未在保存时：用 OneNET 查询结果持续同步表单，与云平台展示一致，打开设置即无需等待
+    if (!settingsVisible.value && !settingsSaving.value) {
+      const d = deviceResult.value
+      if (d.aiConfThreshold != null && Number.isFinite(d.aiConfThreshold)) {
+        settingsForm.value.confThreshold = d.aiConfThreshold
+      }
+      if (d.overflowThresholdG != null && Number.isFinite(d.overflowThresholdG)) {
+        settingsForm.value.overflowThresholdG = d.overflowThresholdG
+      }
+    }
   } else {
     errorMsg.value = `设备数据获取失败：${deviceResult.reason?.message}`
     console.error('[Dashboard] fetchDeviceProperties error:', deviceResult.reason)
@@ -436,6 +569,7 @@ async function fetchAll(manual = false) {
     console.error('[Dashboard] fetchLatestAiResult error:', aiResult_.reason)
   }
 
+  saveDashboardCache()
   loading.value = false
   if (manual) manualLoading.value = false
 }
@@ -477,15 +611,26 @@ function onAutoRefreshChange(val) {
 onMounted(async () => {
   // rawImageUrl 无论 AI 后端是否在线都先赋值，避免后端离线时左侧完全空白
   rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
-  // 摄像头流地址：尝试从 AI 后端获取；失败时不影响 rawImageUrl 降级显示
-  try {
-    const camInfo = await fetchCamInfo()
-    if (camInfo?.stream_url) {
-      streamUrl.value = camInfo.stream_url
-      localStorage.setItem(STREAM_URL_CACHE_KEY, camInfo.stream_url)
-    }
-  } catch (err) {
-    console.error('[Dashboard] init fetchCamInfo error:', err)
+
+  // 并行初始化：摄像头流地址 + 系统配置
+  const [camResult, configResult] = await Promise.allSettled([
+    fetchCamInfo(),
+    fetchConfig()
+  ])
+
+  if (camResult.status === 'fulfilled' && camResult.value?.stream_url) {
+    streamUrl.value = camResult.value.stream_url
+    localStorage.setItem(STREAM_URL_CACHE_KEY, camResult.value.stream_url)
+  } else if (camResult.status === 'rejected') {
+    console.error('[Dashboard] init fetchCamInfo error:', camResult.reason)
+  }
+
+  // 无本地缓存时用语义服务默认配置；已有缓存则保留刷新前的设置/设备快照
+  if (configResult.status === 'fulfilled' && !dashboardSnapshot) {
+    settingsForm.value.confThreshold = configResult.value.conf_threshold ?? 0.70
+    settingsForm.value.overflowThresholdG = configResult.value.overflow_threshold_g ?? 1000
+  } else if (configResult.status === 'rejected') {
+    console.error('[Dashboard] init fetchConfig error:', configResult.reason)
   }
 
   fetchAll()
@@ -504,6 +649,100 @@ function onStreamError() {
 function onAnnotatedImageError() {
   aiResult.value = { ...aiResult.value, imageUrl: '' }
 }
+
+// ───────────────────────────────────────────
+// 系统设置对话框逻辑
+// ───────────────────────────────────────────
+
+/**
+ * 打开设置面板：先用当前页已轮询到的 OneNET 数据立即填充（零等待），再后台拉最新。
+ * 满载/置信度阈值以云平台 query-device-property 为准，与卡片数据同源实时更新。
+ */
+function openSettings() {
+  settingsVisible.value = true
+  settingsErrorMsg.value = ''
+  const p = properties.value
+  if (p.aiConfThreshold != null && Number.isFinite(p.aiConfThreshold)) {
+    settingsForm.value.confThreshold = p.aiConfThreshold
+  }
+  if (p.overflowThresholdG != null && Number.isFinite(p.overflowThresholdG)) {
+    settingsForm.value.overflowThresholdG = p.overflowThresholdG
+  }
+
+  Promise.allSettled([fetchDeviceProperties(), fetchConfig()]).then(([devRes, cfgRes]) => {
+    if (!settingsVisible.value || settingsSaving.value) return
+    if (devRes.status === 'fulfilled') {
+      const d = devRes.value
+      if (d.aiConfThreshold != null && Number.isFinite(d.aiConfThreshold)) {
+        settingsForm.value.confThreshold = d.aiConfThreshold
+      }
+      if (d.overflowThresholdG != null && Number.isFinite(d.overflowThresholdG)) {
+        settingsForm.value.overflowThresholdG = d.overflowThresholdG
+      }
+      properties.value = d
+      saveDashboardCache()
+      return
+    }
+    console.warn('[Settings] fetchDeviceProperties:', devRes.reason?.message)
+    if (cfgRes.status === 'fulfilled') {
+      const cfg = cfgRes.value
+      if (p.overflowThresholdG == null || !Number.isFinite(p.overflowThresholdG)) {
+        settingsForm.value.overflowThresholdG = cfg.overflow_threshold_g ?? settingsForm.value.overflowThresholdG
+      }
+      if (p.aiConfThreshold == null || !Number.isFinite(p.aiConfThreshold)) {
+        settingsForm.value.confThreshold = cfg.conf_threshold ?? settingsForm.value.confThreshold
+      }
+    } else {
+      console.error('[Settings] fetchConfig error:', cfgRes.reason)
+      ElMessage.warning('读取推理服务配置失败，阈值以页面已缓存为准')
+    }
+  })
+}
+
+/**
+ * 保存设置：
+ * 1. 写入 server.py config.json（识别阈值 + 满溢阈值）
+ * 2. 通过 OneNET API 将满溢阈值与 AI 置信度阈值下发到 ESP32-S3
+ */
+async function saveSettings() {
+  settingsSaving.value = true
+  settingsErrorMsg.value = ''
+  try {
+    // Step 1: 写入 server.py 持久化
+    const payload = {
+      conf_threshold: settingsForm.value.confThreshold,
+      overflow_threshold_g: settingsForm.value.overflowThresholdG
+    }
+    console.log('[Settings] updateConfig payload:', payload)
+    const cfgResult = await updateConfig(payload)
+    console.log('[Settings] updateConfig ok:', cfgResult)
+
+    // Step 2: 通过 OneNET MQTT 同步阈值到硬件
+    try {
+      console.log('[Settings] setDeviceThresholds:', settingsForm.value.overflowThresholdG, settingsForm.value.confThreshold)
+      await setDeviceThresholds(settingsForm.value.overflowThresholdG, settingsForm.value.confThreshold)
+      console.log('[Settings] setDeviceThresholds ok')
+    } catch (mqttErr) {
+      console.warn('[Settings] setDeviceThresholds failed:', mqttErr?.response?.status, mqttErr?.response?.data ?? mqttErr?.message)
+      // server.py 已保存成功，关闭对话框并提示部分成功
+      settingsVisible.value = false
+      ElMessage.warning('配置已保存到推理服务，但同步到设备失败（设备可能离线，重连后自动生效）')
+      return
+    }
+
+    settingsVisible.value = false
+    ElMessage.success('设置已保存并同步到设备')
+  } catch (err) {
+    console.error('[Settings] saveSettings error:', err?.response?.status, err?.response?.data ?? err?.message)
+    const detail = err?.response?.data?.detail ?? err?.response?.data?.msg ?? err?.message ?? '请检查推理服务是否正常运行'
+    const msg = `保存失败：${detail}`
+    settingsErrorMsg.value = msg   // 对话框内联显示，确保用户看到错误
+    ElMessage.error(msg)
+  } finally {
+    settingsSaving.value = false
+    saveDashboardCache()
+  }
+}
 </script>
 
 <style scoped>
@@ -512,6 +751,7 @@ function onAnnotatedImageError() {
   min-height: 100vh;
   background: var(--color-page-bg);
   padding: 70px 0 40px;
+  transition: background 0.3s ease;
 }
 
 /* ===== 顶部导航栏 ===== */
@@ -521,11 +761,13 @@ function onAnnotatedImageError() {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 16px 28px;
+  padding: 0 28px;
+  height: 64px;
   background: var(--color-header-bg);
   border-bottom: 1px solid var(--color-border);
   box-shadow: var(--color-shadow);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   position: fixed;
   top: 0;
   left: 0;
@@ -553,48 +795,57 @@ function onAnnotatedImageError() {
 }
 
 .title {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
-/* 状态指示圆点（绿色在线 / 红色离线） */
+/* 状态指示圆点 */
 .status-dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   margin-right: 5px;
   vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .status-dot.online {
-  background: #67c23a;
-  box-shadow: 0 0 6px #67c23a;  /* 绿色光晕强调在线状态 */
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px var(--color-success-bg);
+  animation: pulse-dot 2s infinite;
 }
 
 .status-dot.offline {
-  background: #f56c6c;
+  background: var(--color-danger);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 2px var(--color-success-bg); }
+  50%       { box-shadow: 0 0 0 4px var(--color-success-bg); }
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .update-time {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 .theme-toggle-btn {
-  --el-button-bg-color: var(--color-surface);
+  --el-button-bg-color: var(--color-surface-muted);
   --el-button-border-color: var(--color-border);
   --el-button-text-color: var(--color-text-secondary);
-  --el-button-hover-bg-color: var(--color-surface-muted);
+  --el-button-hover-bg-color: var(--color-accent-light);
   --el-button-hover-border-color: var(--color-accent);
   --el-button-hover-text-color: var(--color-accent);
 }
@@ -610,61 +861,61 @@ function onAnnotatedImageError() {
 
 /* ===== 满溢警告横幅 ===== */
 .full-alert {
-  margin: 0 28px 12px;
-  border-radius: 8px;
+  margin: 0 24px 10px;
+  border-radius: 10px;
 }
 
 /* ===== 卡片行间距 ===== */
 .card-row {
-  padding: 0 28px;
+  padding: 0 24px;
 }
 
 /* ===== 垃圾桶仓位卡片 ===== */
 .bin-card {
-  border-radius: 12px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   margin-bottom: 20px;
 }
 
-/* 鼠标悬停时轻微上浮效果 */
 .bin-card:hover,
-.data-card:hover,
 .ai-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
 }
 
-/* 满溢：红色边框 + 浅红背景 */
+/* 满溢：红色边框 + 主题适配背景 */
 .card-full {
-  border: 2px solid #f56c6c;
-  background: #fff5f5;
+  border: 2px solid var(--card-full-border) !important;
+  background: var(--card-full-bg) !important;
 }
 
-/* 警告（≥80%）：橙色边框 + 浅黄背景 */
+/* 警告（≥80%）：橙色边框 + 主题适配背景 */
 .card-warning {
-  border: 2px solid #e6a23c;
-  background: #fffbf0;
+  border: 2px solid var(--card-warning-border) !important;
+  background: var(--card-warning-bg) !important;
 }
 
-/* 正常：绿色边框 */
+/* 正常：绿色左边框点缀 */
 .card-normal {
-  border: 2px solid #67c23a;
+  border: 2px solid var(--card-normal-border) !important;
+  background: var(--card-normal-bg) !important;
 }
 
-/* 卡片头部：图标 + 名称 + 状态标签 */
+/* 卡片头部 */
 .bin-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .bin-icon {
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1;
 }
 
 .bin-name {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--color-text-primary);
   flex: 1;
@@ -677,21 +928,30 @@ function onAnnotatedImageError() {
 /* 指标横排布局 */
 .bin-metrics {
   display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
+  gap: 0;
+  margin-bottom: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .metric {
   flex: 1;
+  padding: 12px 16px;
+  background: var(--color-surface-muted);
+}
+
+.metric:first-child {
+  border-right: 1px solid var(--color-border);
 }
 
 .metric-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-tertiary);
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
 }
 
 .metric-value {
@@ -700,12 +960,13 @@ function onAnnotatedImageError() {
   gap: 4px;
 }
 
-/* 大号数字突出显示 */
+/* 大号数字 */
 .value-number {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 700;
   color: var(--color-text-primary);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .value-unit {
@@ -714,15 +975,9 @@ function onAnnotatedImageError() {
   font-weight: 500;
 }
 
-/* 物模型属性名提示，灰色小字 */
-.metric-sub {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-top: 2px;
-}
 
 .bin-progress {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .progress-label {
@@ -731,24 +986,24 @@ function onAnnotatedImageError() {
   text-align: right;
 }
 
-/* ===== AI 卡片基础样式 ===== */
+/* ===== AI 卡片 ===== */
 .ai-card {
-  border-radius: 12px;
-  transition: transform 0.2s;
+  border-radius: 14px;
+  transition: transform 0.2s ease;
   margin-bottom: 20px;
 }
 
-/* ===== AI 识别面板 ===== */
+/* ===== AI 面板头 ===== */
 .ai-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .ai-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--color-text-primary);
 }
@@ -763,8 +1018,8 @@ function onAnnotatedImageError() {
 .ai-dual-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .ai-panel {
@@ -777,60 +1032,55 @@ function onAnnotatedImageError() {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-text-secondary);
+  letter-spacing: 0.3px;
 }
 
-/* 面板状态小圆点 */
+/* 面板状态圆点 */
 .panel-dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-/* 直播流活跃时绿色脉动 */
 .live-dot {
-  background: #67c23a;
-  box-shadow: 0 0 6px #67c23a;
-  animation: pulse 1.5s infinite;
+  background: var(--color-success);
+  animation: pulse 2s infinite;
 }
 
-/* 设备离线时灰色静止点 */
 .offline-dot {
-  background: var(--color-text-tertiary);
+  background: var(--color-text-disabled);
 }
 
-/* 识别结果蓝色点 */
 .result-dot {
   background: var(--color-accent);
 }
 
-/* 脉动动画：模拟直播呼吸效果 */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
 }
 
-/* 底部指标横向四列布局 */
+/* 底部指标四列 */
 .ai-metadata-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
-/* 图像容器：圆角 + 浅灰背景 */
+/* 图像容器 */
 .ai-preview {
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   flex: 1;
 }
 
-/* 图像填充容器，contain 模式保留比例 */
 .ai-image {
   display: block;
   width: 100%;
@@ -840,7 +1090,6 @@ function onAnnotatedImageError() {
   background: var(--color-surface-muted);
 }
 
-/* 占位符：居中提示文字 */
 .ai-image-placeholder {
   display: flex;
   align-items: center;
@@ -850,7 +1099,6 @@ function onAnnotatedImageError() {
   font-size: 14px;
 }
 
-/* 离线占位符：纵向布局 + 灰色调 */
 .camera-offline {
   flex-direction: column;
   gap: 8px;
@@ -858,11 +1106,10 @@ function onAnnotatedImageError() {
   color: var(--color-text-secondary);
 }
 
-/* 离线图标去饱和 + 降低透明度 */
 .camera-offline-icon {
-  font-size: 40px;
+  font-size: 36px;
   filter: grayscale(1);
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .camera-offline-sub {
@@ -870,65 +1117,81 @@ function onAnnotatedImageError() {
   color: var(--color-text-tertiary);
 }
 
-/* 未使用的纵向布局备用，保留供扩展 */
-.ai-metadata {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 /* 单个指标卡片 */
 .ai-metric {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: 10px;
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
+  transition: border-color 0.2s;
+}
+
+.ai-metric:hover {
+  border-color: var(--color-border-strong);
 }
 
 .ai-metric-label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-tertiary);
   margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .ai-metric-value {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
-  word-break: break-word;  /* 长文本（如 URL）自动换行 */
+  word-break: break-word;
 }
 
-/* ===== 错误提示横幅 ===== */
+/* ===== 错误提示 ===== */
 .error-alert {
-  margin: 16px 28px 0;
-  border-radius: 8px;
+  margin: 12px 24px 0;
+  border-radius: 10px;
 }
 
 /* ===== 页脚 ===== */
 .footer {
   text-align: center;
-  padding: 20px;
+  padding: 24px;
   font-size: 12px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-disabled);
+  border-top: 1px solid var(--color-border);
+  margin: 0 24px;
 }
 
-/* ===== 响应式：窄屏适配 ===== */
+/* ===== 响应式 ===== */
 @media (max-width: 900px) {
-  /* 双列图像区改为单列堆叠 */
   .ai-dual-panel {
     grid-template-columns: 1fr;
   }
 
-  /* 四列指标改为两列 */
   .ai-metadata-row {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  /* 重量/百分比指标改为纵向排列 */
   .bin-metrics {
     flex-direction: column;
-    gap: 12px;
+    gap: 0;
+  }
+
+  .metric:first-child {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .card-row,
+  .full-alert,
+  .error-alert {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .header {
+    height: auto;
+    padding: 12px 16px;
   }
 }
 </style>

@@ -4,16 +4,16 @@
  * 职责：
  * 1. 生成符合 OneNET 规范的鉴权 Token（HMAC-SHA256，与 ESP32 端算法一致）
  * 2. 封装 Axios HTTP 客户端，统一注入鉴权头、打印调试日志
- * 3. 提供 fetchDeviceProperties() 查询物模型属性并推断设备在线状态
+ * 3. 提供 fetchDeviceProperties() 查询物模型属性，并通过官方设备详情接口获取在线状态
  */
 
 import axios from 'axios'
 
 // ===== 设备配置 =====
 // 以下三项必须与 esp32s3/src/main.cpp 中的 ONENET_* 常量完全一致
-const ONENET_PRODUCT_ID  = 'f45hkc7xC7'                              // 产品 ID
+const ONENET_PRODUCT_ID = 'f45hkc7xC7'                              // 产品 ID
 const ONENET_DEVICE_NAME = 'Box1'                                     // 设备名称
-const ONENET_BASE64_KEY  = 'T0R5ejYyM1JrT2VuczBkZllINmZuazRicEMxc29xcnk=' // Base64 编码的设备密钥
+const ONENET_BASE64_KEY = 'T0R5ejYyM1JrT2VuczBkZllINmZuazRicEMxc29xcnk=' // Base64 编码的设备密钥
 
 // ===== OneNET Token 生成 =====
 
@@ -60,9 +60,6 @@ export async function generateOneNetToken(
   const et = String(expirationTime)
   const stringForSignature = `${et}\n${method}\n${resource}\n${version}`
 
-  // 【调试】输出待签名字符串，可与 ESP32 串口日志对比验证算法一致性
-  console.debug('[OneNET Token] 待签名字符串:', stringForSignature)
-
   // 步骤 3：使用 Web Crypto API 导入 HMAC-SHA256 密钥（浏览器原生，无需第三方库）
   const cryptoKey = await crypto.subtle.importKey(
     'raw',                          // 密钥格式：原始字节
@@ -92,8 +89,6 @@ export async function generateOneNetToken(
     `&method=${urlEncodeValue(method)}` +
     `&sign=${urlEncodeValue(signBase64)}`
 
-  // 【调试】输出完整 Token，可直接粘贴到 OneNET API 调试工具的 Authorization 头中验证
-  console.debug('[OneNET Token] 生成结果:', token)
   return token
 }
 
@@ -119,53 +114,6 @@ const http = axios.create({
   timeout: 10000  // 超时 10 秒，超时后 Axios 抛出 AxiosError
 })
 
-// ===== Axios 请求拦截器 =====
-/**
- * 每次请求发出前，将完整的请求信息打印到控制台。
- * 使用 console.group 折叠分组，方便在 DevTools 中逐条展开查看。
- *
- * 可排查的问题：
- * - URL 路径是否正确（是否命中 Vite proxy 规则）
- * - Query Params 是否包含 product_id / device_name
- * - Authorization 头是否存在（值为 Token 字符串）
- */
-http.interceptors.request.use((config) => {
-  console.group(`[OneNET Request] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`)
-  console.log('Query Params:', config.params)   // 查询参数，应含 product_id / device_name
-  console.log('Headers:', config.headers)        // 请求头，应含 authorization: version=...
-  console.groupEnd()
-  return config  // 必须返回 config，否则请求不会发出
-})
-
-// ===== Axios 响应拦截器 =====
-/**
- * 统一处理响应和错误，打印原始数据供调试。
- *
- * 成功回调：打印 HTTP 状态码 + 完整响应体（含 code / msg / data）
- * 失败回调：打印 HTTP 状态码、请求 URL、响应体、错误消息
- *   - 若 Status 为 undefined → 通常是 CORS 阻断或网络断开（Network Error）
- *   - 若 Status 为 404 → API 路径不存在，检查端点 URL
- *   - 若 Status 为 403 → Token 鉴权失败，检查密钥或签名算法
- */
-http.interceptors.response.use(
-  (response) => {
-    // 请求成功（HTTP 2xx）
-    console.group(`[OneNET Response] ${response.status} ${response.config.url}`)
-    console.log('Raw data:', response.data)  // 平台原始 JSON，包含 code / msg / data 字段
-    console.groupEnd()
-    return response  // 必须返回 response，否则调用方收不到数据
-  },
-  (error) => {
-    // 请求失败（HTTP 4xx/5xx 或网络错误）
-    console.group('[OneNET Response Error]')
-    console.error('状态码:', error.response?.status)      // HTTP 状态码；undefined 表示网络层错误
-    console.error('请求 URL:', error.config?.url)         // 实际发出的 URL 路径（含代理前缀）
-    console.error('响应体:', error.response?.data)        // 服务器返回的错误描述（如有）
-    console.error('错误消息:', error.message)             // Axios 错误描述（如 "Network Error"）
-    console.groupEnd()
-    return Promise.reject(error)  // 继续向上抛出，由调用方的 catch 处理
-  }
-)
 
 // ===== 公共鉴权头生成 =====
 /**
@@ -179,9 +127,6 @@ async function authHeader() {
   const resource = `products/${ONENET_PRODUCT_ID}/devices/${ONENET_DEVICE_NAME}`
   const et = getExpirationTime()
 
-  // 【调试】输出资源串和过期时间，可验证 Token 的 res / et 字段是否正确
-  console.debug('[OneNET Auth] resource:', resource, '| et:', et, '| 过期时间:', new Date(et * 1000).toLocaleString())
-
   const token = await generateOneNetToken(ONENET_BASE64_KEY, resource, et)
   // 注意：OneNET 使用小写 authorization，与标准 HTTP Authorization 头等价（HTTP 头不区分大小写）
   return { authorization: token }
@@ -190,7 +135,7 @@ async function authHeader() {
 // ===== API 接口 =====
 
 /**
- * 查询设备最新物模型属性值，并从属性时间戳推断设备在线状态。
+ * 查询设备最新物模型属性值，并通过官方设备详情接口获取设备在线状态。
  *
  * OneNET AIoT REST API:
  *   GET /thingmodel/query-device-property?product_id={}&device_name={}
@@ -206,36 +151,52 @@ async function authHeader() {
  *     ]
  *   }
  *
- * 在线判断规则：
- *   取所有属性时间戳的最大值，距今 ≤ 30 秒则视为在线。
+ * 设备在线状态来源（官方接口）：
+ *   GET /device/detail
+ *   data.status: 0-离线，1-在线，2-未激活
  *
  * @returns {Promise<{
  *   phone:   { weight: number, percent: number, full: boolean },
  *   mouse:   { weight: number, percent: number, full: boolean },
  *   battery: { weight: number, percent: number, full: boolean },
  *   online:  boolean,
- *   lastReportTime: number|null
+ *   lastReportTime: string|null,
+ *   overflowThresholdG: number|null,
+ *   aiConfThreshold: number|null
  * }>}
  */
 export async function fetchDeviceProperties() {
-  console.log('[OneNET] 开始请求设备属性...')
-
   const headers = await authHeader()
-  const { data } = await http.get('/thingmodel/query-device-property', {
-    headers,
-    params: {
-      product_id: ONENET_PRODUCT_ID,
-      device_name: ONENET_DEVICE_NAME
-    }
-  })
-
-  if (data.code !== 0) {
-    console.error('[OneNET] 属性查询业务错误:', data)
-    throw new Error(`OneNET API error: ${data.msg || data.code}`)
+  const commonParams = {
+    product_id: ONENET_PRODUCT_ID,
+    device_name: ONENET_DEVICE_NAME
   }
 
-  const list = Array.isArray(data.data) ? data.data : []
-  console.log('[OneNET] 属性列表（原始）:', JSON.stringify(list))
+  // 并行请求：属性值用于展示仓位数据；设备详情用于获取官方在线状态。
+  const [propertyResp, detailResp] = await Promise.all([
+    http.get('/thingmodel/query-device-property', {
+      headers,
+      params: commonParams
+    }),
+    http.get('/device/detail', {
+      headers,
+      params: commonParams
+    })
+  ])
+
+  const propertyData = propertyResp.data
+  if (propertyData.code !== 0) {
+    console.error('[OneNET] 属性查询业务错误:', propertyData)
+    throw new Error(`OneNET API error: ${propertyData.msg || propertyData.code}`)
+  }
+
+  const detailData = detailResp.data
+  if (detailData.code !== 0) {
+    console.error('[OneNET] 设备详情查询业务错误:', detailData)
+    throw new Error(`OneNET Device Detail API error: ${detailData.msg || detailData.code}`)
+  }
+
+  const list = Array.isArray(propertyData.data) ? propertyData.data : []
 
   const findItem = (id) => list.find((item) => item.identifier === id)
 
@@ -245,30 +206,81 @@ export async function fetchDeviceProperties() {
     const pItem = findItem(`${prefix}_percent`)
     const fItem = findItem(`${prefix}_full`)
     return {
-      weight:  Number(wItem?.value ?? 0),
+      weight: Number(wItem?.value ?? 0),
       percent: Number(pItem?.value ?? 0),
-      full:    fItem?.value === 'true',
-      _time:   wItem?.time ?? pItem?.time ?? fItem?.time ?? null
+      full: fItem?.value === 'true',
+      _time: wItem?.time ?? pItem?.time ?? fItem?.time ?? null
     }
   }
 
-  const phone   = parseBin('phone')
-  const mouse   = parseBin('mouse')
+  const phone = parseBin('phone')
+  const mouse = parseBin('mouse')
   const battery = parseBin('battery')
 
-  // 取所有属性时间戳的最大值作为最后上报时间
-  const times = [phone._time, mouse._time, battery._time].filter((t) => t !== null)
-  const lastReportTime = times.length ? Math.max(...times) : null
-  const online = lastReportTime !== null && Date.now() - lastReportTime <= 30000
+  // 官方设备状态：0-离线，1-在线，2-未激活
+  const deviceStatus = detailData?.data?.status
+  const online = deviceStatus === 1
+  const lastReportTime = detailData?.data?.last_time ?? null
 
   // 删除内部辅助字段，不暴露给页面
   delete phone._time
   delete mouse._time
   delete battery._time
 
-  const result = { phone, mouse, battery, online, lastReportTime }
-  console.log('[OneNET] 属性解析结果:', result)
-  console.log('[OneNET] 上次上报时间:', lastReportTime ? new Date(lastReportTime).toLocaleString() : '无')
+  const ot = findItem('overflow_threshold_g')
+  const ai = findItem('ai_conf_threshold')
+  const overflowRaw = ot?.value
+  const aiRaw = ai?.value
+  const overflowThresholdG =
+    overflowRaw !== undefined && overflowRaw !== null && overflowRaw !== ''
+      ? Number(overflowRaw)
+      : null
+  const aiConfThreshold =
+    aiRaw !== undefined && aiRaw !== null && aiRaw !== '' ? Number(aiRaw) : null
 
+  const result = {
+    phone,
+    mouse,
+    battery,
+    online,
+    lastReportTime,
+    overflowThresholdG: Number.isFinite(overflowThresholdG) ? overflowThresholdG : null,
+    aiConfThreshold: Number.isFinite(aiConfThreshold) ? aiConfThreshold : null
+  }
   return result
+}
+
+/**
+ * 通过 OneNET REST API 向设备下发满溢重量阈值与 AI 识别置信度阈值。
+ *
+ * OneNET AIoT 物模型属性设置接口：
+ *   POST /thingmodel/set-device-property
+ *
+ * 下发后，OneNET 平台将通过 MQTT thing/property/set 推送给 ESP32-S3，
+ * 设备收到后更新运行时变量并持久化到 NVS。
+ *
+ * 前提：物模型中已定义可写属性 overflow_threshold_g、ai_conf_threshold。
+ *
+ * @param {number} thresholdG - 满溢重量阈值（克），有效范围 100~5000
+ * @param {number} aiConf - AI 置信度阈值（0~1）
+ * @returns {Promise<void>}
+ */
+export async function setDeviceThresholds(thresholdG, aiConf) {
+  const headers = await authHeader()
+  const body = {
+    product_id: ONENET_PRODUCT_ID,
+    device_name: ONENET_DEVICE_NAME,
+    params: {
+      overflow_threshold_g: { value: thresholdG },
+      ai_conf_threshold: { value: aiConf }
+    }
+  }
+  console.log('[OneNET] setDeviceThresholds request body:', body)
+  try {
+    const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
+    console.log('[OneNET] setDeviceThresholds response:', data)
+  } catch (err) {
+    console.error('[OneNET] setDeviceThresholds error — status:', err?.response?.status, 'body:', err?.response?.data)
+    throw err
+  }
 }

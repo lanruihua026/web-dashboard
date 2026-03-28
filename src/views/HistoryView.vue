@@ -425,8 +425,9 @@ async function onClear() {
 .history-page {
   min-height: 100vh;
   background: var(--color-page-bg);
-  padding: 70px 0 40px;
+  padding: 64px 0 40px;
   color: var(--color-text-primary);
+  transition: background 0.3s ease;
 }
 
 /* ===== 顶部导航栏 ===== */
@@ -435,12 +436,14 @@ async function onClear() {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 14px 28px;
+  gap: 10px;
+  padding: 0 28px;
+  height: 64px;
   background: var(--color-header-bg);
   border-bottom: 1px solid var(--color-border);
   box-shadow: var(--color-shadow);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   position: fixed;
   top: 0;
   left: 0;
@@ -451,90 +454,94 @@ async function onClear() {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .back-btn {
-  --el-button-bg-color: var(--color-surface);
+  --el-button-bg-color: var(--color-surface-muted);
   --el-button-border-color: var(--color-border);
   --el-button-text-color: var(--color-text-secondary);
-  --el-button-hover-bg-color: var(--color-surface-muted);
+  --el-button-hover-bg-color: var(--color-accent-light);
   --el-button-hover-border-color: var(--color-accent);
   --el-button-hover-text-color: var(--color-accent);
 }
 
 .theme-toggle-btn {
-  --el-button-bg-color: var(--color-surface);
+  --el-button-bg-color: var(--color-surface-muted);
   --el-button-border-color: var(--color-border);
   --el-button-text-color: var(--color-text-secondary);
-  --el-button-hover-bg-color: var(--color-surface-muted);
+  --el-button-hover-bg-color: var(--color-accent-light);
   --el-button-hover-border-color: var(--color-accent);
   --el-button-hover-text-color: var(--color-accent);
 }
 
 .title {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .data-count {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 /* 时间筛选按钮组 */
 .time-filters {
   display: flex;
-  gap: 6px;
-  background: var(--color-surface);
+  gap: 4px;
+  background: var(--color-surface-muted);
   padding: 4px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
 }
 
 .filter-btn {
-  padding: 5px 14px;
+  padding: 4px 13px;
   border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--color-text-tertiary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.18s, color 0.18s;
+  font-family: inherit;
 }
 
 .filter-btn:hover {
   color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
+  background: var(--color-surface);
 }
 
 .filter-btn.active {
   background: var(--color-accent);
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(45, 124, 246, 0.3);
 }
 
 .clear-btn {
   --el-button-bg-color: transparent;
-  --el-button-border-color: rgba(245,108,108,0.4);
-  --el-button-text-color: #f56c6c;
-  --el-button-hover-bg-color: rgba(245,108,108,0.1);
-  --el-button-hover-border-color: #f56c6c;
-  --el-button-hover-text-color: #f56c6c;
+  --el-button-border-color: var(--color-danger-bg);
+  --el-button-text-color: var(--color-danger);
+  --el-button-hover-bg-color: var(--color-danger-bg);
+  --el-button-hover-border-color: var(--color-danger);
+  --el-button-hover-text-color: var(--color-danger);
 }
 
 /* ===== 主内容区 ===== */
 .content {
-  padding: 28px;
+  padding: 24px 28px;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -550,13 +557,13 @@ async function onClear() {
 }
 
 .empty-icon {
-  font-size: 64px;
+  font-size: 56px;
   margin-bottom: 20px;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .empty-title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--color-text-primary);
   margin-bottom: 12px;
@@ -573,50 +580,74 @@ async function onClear() {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: 18px;
+  margin-bottom: 20px;
 }
 
 .stat-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  padding: 20px 24px;
-  transition: border-color 0.2s, background 0.2s;
+  padding: 20px 22px;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 左侧彩色竖线装饰 */
+.stat-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 16px 0 0 16px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 .stat-card:hover {
   border-color: var(--accent);
   background: var(--accent-dim);
+  transform: translateY(-2px);
+}
+
+.stat-card:hover::before {
+  opacity: 1;
 }
 
 .stat-icon {
-  font-size: 28px;
+  font-size: 26px;
   margin-bottom: 8px;
 }
 
 .stat-name {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--color-text-tertiary);
   margin-bottom: 10px;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .stat-current {
   display: flex;
   align-items: baseline;
   gap: 4px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .stat-num {
-  font-size: 40px;
+  font-size: 38px;
   font-weight: 700;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-unit {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--color-text-tertiary);
   font-weight: 500;
 }
@@ -625,21 +656,25 @@ async function onClear() {
   display: flex;
   gap: 0;
   margin-bottom: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .stat-item {
   flex: 1;
   text-align: center;
-  border-right: 1px solid var(--color-border);
+  padding: 8px 6px;
+  background: var(--color-surface-muted);
 }
 
-.stat-item:last-child {
-  border-right: none;
+.stat-item:not(:last-child) {
+  border-right: 1px solid var(--color-border);
 }
 
 .stat-label {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--color-text-tertiary);
   margin-bottom: 3px;
   text-transform: uppercase;
@@ -647,15 +682,16 @@ async function onClear() {
 }
 
 .stat-val {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 迷你进度条 */
 .mini-bar-bg {
   height: 4px;
-  background: var(--color-surface-muted);
+  background: var(--color-border);
   border-radius: 99px;
   overflow: hidden;
 }
@@ -664,6 +700,7 @@ async function onClear() {
   height: 100%;
   border-radius: 99px;
   transition: width 0.5s ease;
+  opacity: 0.85;
 }
 
 /* ===== 图表卡片 ===== */
@@ -671,22 +708,27 @@ async function onClear() {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
+  padding: 22px 24px;
+  margin-bottom: 20px;
+  transition: border-color 0.2s ease;
+}
+
+.chart-card:hover {
+  border-color: var(--color-border-strong);
 }
 
 .chart-title {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  margin-bottom: 20px;
-  font-size: 17px;
+  margin-bottom: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--color-text-primary);
 }
 
 .chart-subtitle {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--color-text-tertiary);
 }
@@ -705,7 +747,9 @@ async function onClear() {
   text-align: center;
   padding: 20px;
   font-size: 12px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-disabled);
+  border-top: 1px solid var(--color-border);
+  margin: 0 28px;
 }
 
 /* ===== 响应式 ===== */
@@ -715,16 +759,20 @@ async function onClear() {
   }
 
   .header {
-    flex-direction: column;
-    align-items: flex-start;
+    height: auto;
+    padding: 12px 16px;
   }
 
   .chart-container {
-    height: 280px;
+    height: 260px;
   }
 
   .content {
     padding: 16px;
+  }
+
+  .footer {
+    margin: 0 16px;
   }
 }
 
@@ -734,7 +782,11 @@ async function onClear() {
   }
 
   .title {
-    font-size: 17px;
+    font-size: 16px;
+  }
+
+  .bar-chart-container {
+    height: 220px;
   }
 }
 </style>
