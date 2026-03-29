@@ -46,3 +46,7 @@ components.d.ts
 
 # 测试覆盖率
 coverage/
+
+#排除AI工具
+.claude
+.cursor

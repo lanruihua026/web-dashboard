@@ -2,12 +2,20 @@
   <div class="history-page">
 
     <!-- ===== 顶部导航栏 ===== -->
-    <div class="header">
+    <header class="header">
       <div class="header-left">
         <el-button :icon="ArrowLeft" @click="router.push('/')" class="back-btn" round>
           返回仪表盘
         </el-button>
-        <span class="title">📊 历史趋势</span>
+        <div class="brand-block">
+          <span class="brand-icon-wrap" aria-hidden="true">
+            <el-icon :size="22"><TrendCharts /></el-icon>
+          </span>
+          <div class="brand-text">
+            <span class="title">历史趋势</span>
+            <span class="title-tagline">重量曲线 · 三仓对比</span>
+          </div>
+        </div>
       </div>
       <div class="header-right">
         <span class="data-count">共 {{ filteredData.length }} 个数据点</span>
@@ -27,13 +35,13 @@
         </div>
         <el-button size="small" @click="onClear" plain class="clear-btn">清空记录</el-button>
       </div>
-    </div>
+    </header>
 
-    <div class="content">
+    <main class="content page-main">
 
       <!-- ===== 空数据提示 ===== -->
       <div v-if="filteredData.length === 0" class="empty-state">
-        <div class="empty-icon">📉</div>
+        <el-icon class="empty-icon" :size="56"><TrendCharts /></el-icon>
         <div class="empty-title">暂无历史数据</div>
         <div class="empty-desc">
           请前往仪表盘，待设备在线并自动刷新后，数据将自动采集到此处。<br>
@@ -53,7 +61,9 @@
             class="stat-card"
             :style="{ '--accent': bin.color, '--accent-dim': bin.colorDim }"
           >
-            <div class="stat-icon">{{ bin.icon }}</div>
+            <span class="stat-icon-wrap">
+              <el-icon :size="22" class="stat-icon-el"><component :is="BIN_ICONS[bin.key]" /></el-icon>
+            </span>
             <div class="stat-name">{{ bin.name }}</div>
             <div class="stat-current">
               <span class="stat-num" :style="{ color: bin.color }">
@@ -104,17 +114,42 @@
         </div>
       </template>
 
-    </div>
+    </main>
 
     <!-- ===== 页脚 ===== -->
-    <div class="footer">
-      数据采集自仪表盘轮询 | 存储于浏览器 localStorage | 最多保留最近 30 分钟
-    </div>
+    <footer class="footer">
+      <div class="footer-inner page-shell">
+        数据采集自仪表盘轮询 · localStorage · 最多保留最近 30 分钟
+      </div>
+    </footer>
   </div>
 </template>
 
 <script setup>
-import { ArrowLeft, Moon, Sunny } from '@element-plus/icons-vue'
+import {
+  ArrowLeft,
+  Cellphone,
+  Connection,
+  Lightning,
+  Moon,
+  Sunny,
+  TrendCharts
+} from '@element-plus/icons-vue'
+
+const BIN_ICONS = {
+  phone: Cellphone,
+  mouse: Connection,
+  battery: Lightning
+}
+
+/** 将 #RRGGBB 转为 rgba（供 ECharts 渐变使用） */
+function rgbaFromHex(hex, alpha) {
+  const h = hex.replace('#', '')
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${alpha})`
+}
 import * as echarts from 'echarts'
 import { ElMessageBox } from 'element-plus'
 import { historyData, getFilteredHistory, clearHistory } from '../store/historyStore'
@@ -150,10 +185,11 @@ const chartTheme = computed(() => {
 // ───────────────────────────────────────────
 // 仓位配置
 // ───────────────────────────────────────────
+/* 与全局设计系统一致：主蓝 / 辅蓝 / 琥珀强调 */
 const BINS = [
-  { key: 'phone',   name: '手机仓',    icon: '📱', color: '#409EFF', colorDim: 'rgba(64,158,255,0.15)' },
-  { key: 'mouse',   name: '数码配件仓', icon: '🔌', color: '#b37feb', colorDim: 'rgba(179,127,235,0.15)' },
-  { key: 'battery', name: '电池仓',    icon: '🔋', color: '#ffa940', colorDim: 'rgba(255,169,64,0.15)' }
+  { key: 'phone', name: '手机仓', color: '#1e40af' },
+  { key: 'mouse', name: '数码配件仓', color: '#3b82f6' },
+  { key: 'battery', name: '电池仓', color: '#d97706' }
 ]
 
 const TIME_OPTIONS = [
@@ -275,8 +311,8 @@ function buildTrendOption(data) {
       lineStyle: { color: bin.color, width: 2.5 },
       areaStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0,   color: bin.color.replace(')', ', 0.35)').replace('rgb', 'rgba') },
-          { offset: 1,   color: bin.color.replace(')', ', 0.02)').replace('rgb', 'rgba') }
+          { offset: 0, color: rgbaFromHex(bin.color, 0.35) },
+          { offset: 1, color: rgbaFromHex(bin.color, 0.02) }
         ])
       },
       emphasis: { focus: 'series' }
@@ -334,7 +370,7 @@ function buildBarOption(data) {
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: bin.color },
-              { offset: 1, color: bin.colorDim.replace('0.15)', '0.5)') }
+              { offset: 1, color: rgbaFromHex(bin.color, 0.45) }
             ]),
             borderRadius: [6, 6, 0, 0]
           }
@@ -425,12 +461,12 @@ async function onClear() {
 .history-page {
   min-height: 100vh;
   background: var(--color-page-bg);
-  padding: 64px 0 40px;
+  padding: 72px 0 32px;
   color: var(--color-text-primary);
-  transition: background 0.3s ease;
+  transition: background 0.25s ease;
 }
 
-/* ===== 顶部导航栏 ===== */
+/* ===== 顶部导航栏（与仪表盘顶栏对齐）===== */
 .header {
   display: flex;
   justify-content: space-between;
@@ -438,9 +474,9 @@ async function onClear() {
   flex-wrap: wrap;
   gap: 10px;
   padding: 0 28px;
-  height: 64px;
+  min-height: 64px;
   background: var(--color-header-bg);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 2px solid var(--color-primary);
   box-shadow: var(--color-shadow);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -455,6 +491,43 @@ async function onClear() {
   display: flex;
   align-items: center;
   gap: 14px;
+  flex-wrap: wrap;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  color: var(--color-primary);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+[data-theme='dark'] .brand-icon-wrap {
+  color: var(--color-accent);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title-tagline {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.06em;
 }
 
 .header-right {
@@ -483,10 +556,11 @@ async function onClear() {
 }
 
 .title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -524,10 +598,15 @@ async function onClear() {
 }
 
 .filter-btn.active {
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(45, 124, 246, 0.3);
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.28);
+}
+
+[data-theme='dark'] .filter-btn.active {
+  background: var(--el-color-primary);
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
 }
 
 .clear-btn {
@@ -539,11 +618,10 @@ async function onClear() {
   --el-button-hover-text-color: var(--color-danger);
 }
 
-/* ===== 主内容区 ===== */
+/* ===== 主内容区（page-main 在全局 style.css）===== */
 .content {
-  padding: 24px 28px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding-top: 24px;
+  padding-bottom: 8px;
 }
 
 /* ===== 空状态 ===== */
@@ -557,9 +635,9 @@ async function onClear() {
 }
 
 .empty-icon {
-  font-size: 56px;
-  margin-bottom: 20px;
-  opacity: 0.45;
+  margin-bottom: 16px;
+  color: var(--color-text-tertiary);
+  opacity: 0.55;
 }
 
 .empty-title {
@@ -618,9 +696,24 @@ async function onClear() {
   opacity: 1;
 }
 
-.stat-icon {
-  font-size: 26px;
-  margin-bottom: 8px;
+.stat-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.stat-icon-el {
+  color: var(--color-primary);
+}
+
+[data-theme='dark'] .stat-icon-el {
+  color: var(--color-accent);
 }
 
 .stat-name {
@@ -745,11 +838,17 @@ async function onClear() {
 /* ===== 页脚 ===== */
 .footer {
   text-align: center;
-  padding: 20px;
+  padding: 20px 0 28px;
   font-size: 12px;
-  color: var(--color-text-disabled);
+  color: var(--color-text-tertiary);
   border-top: 1px solid var(--color-border);
-  margin: 0 28px;
+  margin-top: 8px;
+}
+
+.footer-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 /* ===== 响应式 ===== */
@@ -768,11 +867,20 @@ async function onClear() {
   }
 
   .content {
-    padding: 16px;
+    padding-top: 16px;
   }
 
-  .footer {
-    margin: 0 16px;
+  .footer-inner {
+    padding: 0 16px;
+  }
+
+  .title-tagline {
+    display: none;
+  }
+
+  .title {
+    white-space: normal;
+    font-size: 15px;
   }
 }
 

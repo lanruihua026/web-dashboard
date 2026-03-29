@@ -1,5 +1,7 @@
 /* ===================================================
- * 全局基础样式重置
+ * 设计系统（ui-ux-pro-max / E-Waste Monitor）
+ * 主色 #1E40AF / 辅色 #3B82F6 / 强调 #F59E0B / 背景 #F8FAFC
+ * 简洁、高对比、数据面板向
  * =================================================== */
 
 *,
@@ -16,93 +18,109 @@ body {
 }
 
 /* ===================================================
- * 亮色主题（默认）
- * 设计基调：冷白 + 蓝灰层次，清爽专业
+ * 亮色主题
  * =================================================== */
 :root {
-  --font-family-base: 'Noto Sans SC', 'Segoe UI', 'PingFang SC', sans-serif;
+  --font-family-base: 'Fira Sans', 'Noto Sans SC', system-ui, sans-serif;
+  --font-family-mono: 'Fira Code', 'Noto Sans SC', ui-monospace, monospace;
 
-  /* 背景层次：page → surface-muted → surface → surface-elevated */
-  --color-page-bg:         #eef2f7;
-  --color-surface:         #ffffff;
-  --color-surface-muted:   #f3f6fb;
+  /* 页面与表面 */
+  --color-page-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
   --color-surface-elevated: #ffffff;
 
-  /* 边框 */
-  --color-border:        #dde3ee;
-  --color-border-strong: #c5cfe0;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
 
-  /* 文本层次 */
-  --color-text-primary:   #1a2332;
-  --color-text-secondary: #445566;
-  --color-text-tertiary:  #7a8ea6;
-  --color-text-disabled:  #aab6c8;
+  /* 文本（正文对比度 ≥ 4.5:1） */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #334155;
+  --color-text-tertiary: #64748b;
+  --color-text-disabled: #94a3b8;
 
-  /* 导航栏 */
-  --color-header-bg: rgba(255, 255, 255, 0.92);
-  --color-shadow:    0 2px 20px rgba(15, 30, 55, 0.07), 0 1px 4px rgba(15, 30, 55, 0.04);
+  --color-header-bg: rgba(255, 255, 255, 0.94);
+  --color-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
 
-  /* 主色 */
-  --color-accent:       #2d7cf6;
-  --color-accent-light: rgba(45, 124, 246, 0.10);
-  --color-success:      #18a058;
-  --color-success-bg:   rgba(24, 160, 88, 0.08);
-  --color-warning:      #d97706;
-  --color-warning-bg:   rgba(217, 119, 6, 0.08);
-  --color-danger:       #e0424a;
-  --color-danger-bg:    rgba(224, 66, 74, 0.08);
+  /* 品牌与功能色 */
+  --color-primary: #1e40af;
+  --color-primary-soft: #3b82f6;
+  --color-accent: #3b82f6;
+  --color-accent-light: rgba(59, 130, 246, 0.12);
+  --color-cta: #f59e0b;
+  --color-cta-light: rgba(245, 158, 11, 0.12);
+  --color-success: #059669;
+  --color-success-bg: rgba(5, 150, 105, 0.1);
+  --color-warning: #d97706;
+  --color-warning-bg: rgba(217, 119, 6, 0.1);
+  --color-danger: #dc2626;
+  --color-danger-bg: rgba(220, 38, 38, 0.08);
 
-  /* 仓位状态卡片背景 */
-  --card-normal-border:  #18a058;
-  --card-normal-bg:      #ffffff;
+  /* 仓位卡片状态 */
+  --card-normal-border: #059669;
+  --card-normal-bg: #ffffff;
   --card-warning-border: #d97706;
-  --card-warning-bg:     #fffdf5;
-  --card-full-border:    #e0424a;
-  --card-full-bg:        #fff8f8;
+  --card-warning-bg: #fffbeb;
+  --card-full-border: #dc2626;
+  --card-full-bg: #fef2f2;
+
+  /* Element Plus 主色对齐设计系统 */
+  --el-color-primary: #1e40af;
+  --el-color-primary-light-3: #3b82f6;
+  --el-color-primary-light-5: #60a5fa;
+  --el-color-primary-light-7: #93c5fd;
+  --el-color-primary-light-8: #bfdbfe;
+  --el-color-primary-light-9: #dbeafe;
+  --el-color-primary-dark-2: #1e3a8a;
 }
 
 /* ===================================================
- * 暗色主题
- * 设计基调：深蓝黑 + 冷灰层次，沉浸专业
+ * 暗色主题（深蓝底 + 蓝琥珀强调）
  * =================================================== */
 [data-theme='dark'] {
-  /* 背景层次：深度递进，确保各层视觉可区分 */
-  --color-page-bg:          #0c1220;
-  --color-surface:          #131e30;
-  --color-surface-muted:    #1c2a3f;
-  --color-surface-elevated: #1f3148;
+  --color-page-bg: #0b1120;
+  --color-surface: #111827;
+  --color-surface-muted: #1e293b;
+  --color-surface-elevated: #1e293b;
 
-  /* 边框 */
-  --color-border:        #263548;
-  --color-border-strong: #344a64;
+  --color-border: #334155;
+  --color-border-strong: #475569;
 
-  /* 文本层次 */
-  --color-text-primary:   #dce8f8;
-  --color-text-secondary: #9db4cc;
-  --color-text-tertiary:  #6a87a4;
-  --color-text-disabled:  #425a74;
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+  --color-text-disabled: #64748b;
 
-  /* 导航栏 */
-  --color-header-bg: rgba(13, 20, 34, 0.90);
-  --color-shadow:    0 2px 20px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --color-header-bg: rgba(17, 24, 39, 0.92);
+  --color-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.45);
 
-  /* 主色（暗色模式下适度提亮，保证对比度） */
-  --color-accent:       #5b9ef8;
-  --color-accent-light: rgba(91, 158, 248, 0.14);
-  --color-success:      #36c472;
-  --color-success-bg:   rgba(54, 196, 114, 0.10);
-  --color-warning:      #f59e0b;
-  --color-warning-bg:   rgba(245, 158, 11, 0.10);
-  --color-danger:       #f07378;
-  --color-danger-bg:    rgba(240, 115, 120, 0.10);
+  --color-primary: #60a5fa;
+  --color-primary-soft: #3b82f6;
+  --color-accent: #60a5fa;
+  --color-accent-light: rgba(96, 165, 250, 0.15);
+  --color-cta: #fbbf24;
+  --color-cta-light: rgba(251, 191, 36, 0.12);
+  --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.12);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.12);
+  --color-danger: #f87171;
+  --color-danger-bg: rgba(248, 113, 113, 0.12);
 
-  /* 仓位状态卡片背景 */
-  --card-normal-border:  #36c472;
-  --card-normal-bg:      #131e30;
-  --card-warning-border: #f59e0b;
-  --card-warning-bg:     #17200e;
-  --card-full-border:    #f07378;
-  --card-full-bg:        #1e1318;
+  --card-normal-border: #34d399;
+  --card-normal-bg: #111827;
+  --card-warning-border: #fbbf24;
+  --card-warning-bg: #1c1917;
+  --card-full-border: #f87171;
+  --card-full-bg: #1c1416;
+
+  --el-color-primary: #3b82f6;
+  --el-color-primary-light-3: #60a5fa;
+  --el-color-primary-light-5: #93c5fd;
+  --el-color-primary-light-7: #bfdbfe;
+  --el-color-primary-light-8: #dbeafe;
+  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-dark-2: #2563eb;
 }
 
 /* ===================================================
@@ -118,14 +136,62 @@ body {
   font-family: var(--font-family-base);
   background: var(--color-page-bg);
   color: var(--color-text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* 等宽数字（需在组件上加 class="ds-num"） */
+.ds-num {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ===================================================
+ * 页面内容区：统一最大宽度，简洁对齐
+ * =================================================== */
+.page-shell {
+  width: 100%;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* 主内容列：仪表盘 / 历史页共用 */
+.page-main {
+  width: 100%;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 24px;
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
 
 /* ===================================================
  * Element Plus 全局暗色适配
  * =================================================== */
 
-/* 卡片背景 */
 [data-theme='dark'] .el-card {
   background: var(--color-surface);
   border-color: var(--color-border);
@@ -136,50 +202,46 @@ body {
   color: var(--color-text-primary);
 }
 
-/* 进度条轨道 */
 [data-theme='dark'] .el-progress-bar__outer {
   background: var(--color-surface-muted);
 }
 
-/* Alert */
 [data-theme='dark'] .el-alert {
   border: 1px solid;
 }
 
 [data-theme='dark'] .el-alert--error {
   background: var(--color-danger-bg);
-  border-color: rgba(240, 115, 120, 0.3);
+  border-color: rgba(248, 113, 113, 0.35);
   color: var(--color-text-primary);
 }
 
 [data-theme='dark'] .el-alert--warning {
   background: var(--color-warning-bg);
-  border-color: rgba(245, 158, 11, 0.3);
+  border-color: rgba(251, 191, 36, 0.35);
   color: var(--color-text-primary);
 }
 
-/* Switch */
 [data-theme='dark'] .el-switch__core {
   background: var(--color-surface-muted);
   border-color: var(--color-border);
 }
 
-/* Tag */
 [data-theme='dark'] .el-tag--success {
   background: var(--color-success-bg);
-  border-color: rgba(54, 196, 114, 0.3);
+  border-color: rgba(52, 211, 153, 0.35);
   color: var(--color-success);
 }
 
 [data-theme='dark'] .el-tag--danger {
   background: var(--color-danger-bg);
-  border-color: rgba(240, 115, 120, 0.3);
+  border-color: rgba(248, 113, 113, 0.35);
   color: var(--color-danger);
 }
 
 [data-theme='dark'] .el-tag--warning {
   background: var(--color-warning-bg);
-  border-color: rgba(245, 158, 11, 0.3);
+  border-color: rgba(251, 191, 36, 0.35);
   color: var(--color-warning);
 }
 
@@ -189,7 +251,6 @@ body {
   color: var(--color-text-secondary);
 }
 
-/* Dropdown / MessageBox / 弹窗 */
 [data-theme='dark'] .el-overlay-dialog .el-message-box {
   background: var(--color-surface-elevated);
   border: 1px solid var(--color-border);

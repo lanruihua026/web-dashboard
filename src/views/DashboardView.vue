@@ -3,21 +3,32 @@
   <div class="dashboard">
 
     <!-- ===== 顶部标题栏 ===== -->
-    <div class="header">
-      <!-- 左侧：系统名称 -->
+    <header class="header">
+      <!-- 左侧：品牌 + 系统名称 -->
       <div class="header-left">
-        <span class="title">电子废弃物分类回收站监控系统</span>
+        <div class="brand-block">
+          <span class="brand-icon-wrap" aria-hidden="true">
+            <el-icon :size="22"><DataBoard /></el-icon>
+          </span>
+          <div class="brand-text">
+            <span class="title">电子废弃物分类回收站监控系统</span>
+            <span class="title-tagline">智能分拣 · 实时监控</span>
+          </div>
+        </div>
       </div>
 
       <!-- 中部：设备状态信息 -->
       <div class="header-center">
-        <el-tag :type="properties.online ? 'success' : 'danger'" class="status-tag">
+        <el-tag :type="properties.online ? 'success' : 'danger'" class="status-tag" effect="light">
           <span class="status-dot" :class="properties.online ? 'online' : 'offline'"></span>
           {{ properties.online ? '设备在线' : '设备离线' }}
         </el-tag>
-        <span class="device-info">📟 Box1</span>
-        <span class="device-info" v-if="properties.lastReportTime">
-          最后在线：{{ new Date(properties.lastReportTime).toLocaleString('zh-CN') }}
+        <span class="device-chip">
+          <el-icon class="device-chip-icon" :size="14"><Monitor /></el-icon>
+          Box1
+        </span>
+        <span class="device-chip device-chip-muted" v-if="properties.lastReportTime">
+          最后在线 {{ new Date(properties.lastReportTime).toLocaleString('zh-CN') }}
         </span>
       </div>
 
@@ -34,17 +45,19 @@
           @change="onAutoRefreshChange"
           class="auto-switch"
         />
-        <el-button type="info" plain @click="router.push('/history')" round>
-          📊 历史趋势
+        <el-button type="info" plain :icon="TrendCharts" @click="router.push('/history')" round>
+          历史趋势
         </el-button>
-        <el-button type="warning" plain @click="openSettings" round>
-          ⚙️ 系统设置
+        <el-button type="warning" plain :icon="Setting" @click="openSettings" round>
+          系统设置
         </el-button>
         <el-button type="primary" :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round>
           手动刷新
         </el-button>
       </div>
-    </div>
+    </header>
+
+    <main class="page-main">
 
     <!-- ===== 系统设置对话框 ===== -->
     <el-dialog v-model="settingsVisible" title="系统设置" width="420px" :close-on-click-modal="false">
@@ -118,6 +131,10 @@
     </template>
 
     <!-- ===== 垃圾桶状态卡片区（手机仓 / 数码配件仓 / 电池仓）===== -->
+    <div class="section-head card-row section-head-first">
+      <span class="section-label">回收仓位</span>
+      <span class="section-hint">重量与容量来自 OneNET 物模型</span>
+    </div>
     <el-row :gutter="20" class="card-row">
       <!-- 遍历 BINS 常量，每个仓位渲染一张卡片 -->
       <el-col v-for="bin in BINS" :key="bin.key" :xs="24" :sm="24" :lg="8">
@@ -128,7 +145,9 @@
         >
           <!-- 卡片头：图标 + 仓名 + 状态标签 -->
           <div class="bin-header">
-            <span class="bin-icon">{{ bin.icon }}</span>
+            <span class="bin-icon-wrap">
+              <el-icon :size="24" class="bin-icon-el"><component :is="BIN_ICONS[bin.key]" /></el-icon>
+            </span>
             <span class="bin-name">{{ bin.name }}</span>
             <el-tag
               :type="getBinTagType(properties[bin.key].percent, properties[bin.key].full)"
@@ -172,6 +191,10 @@
     </el-row>
 
     <!-- ===== AI 识别结果面板 ===== -->
+    <div class="section-head card-row">
+      <span class="section-label">AI 视觉识别</span>
+      <span class="section-hint">ESP32-CAM 与 YOLO 推理服务</span>
+    </div>
     <el-row :gutter="20" class="card-row">
       <el-col :xs="24">
         <el-card class="ai-card" shadow="hover">
@@ -180,7 +203,7 @@
           <div class="ai-header">
             <div>
               <div class="ai-title">模型识别结果</div>
-              <div class="ai-subtitle">左：ESP32-CAM 实时画面 | 右：YOLO 识别结果（含边界框）</div>
+              <div class="ai-subtitle">左：最新采集帧（与推理同步刷新） | 右：YOLO 识别结果（含边界框）</div>
             </div>
             <!-- 根据最新推理结果判断是否检测到目标 -->
             <el-tag :type="aiResult.ok ? 'success' : 'info'" effect="light">
@@ -190,29 +213,20 @@
 
           <!-- 双列图像区 -->
           <div class="ai-dual-panel">
-            <!-- 左侧：ESP32-CAM 实时原始画面 -->
+            <!-- 左侧：服务端保存的最新原始帧（与每次 /infer 同步，避免 ESP32 侧 MJPEG 卡顿） -->
             <div class="ai-panel">
               <div class="panel-label">
-                <!-- 绿点脉动动画表示直播流活跃 -->
-                <span class="panel-dot" :class="properties.online ? 'live-dot' : 'offline-dot'"></span>实时采集
+                <span class="panel-dot" :class="properties.online ? 'live-dot' : 'offline-dot'"></span>最新采集帧
               </div>
               <div class="ai-preview">
-                <!-- 优先使用 MJPEG 推流地址（低延迟），加载失败由 @error 降级 -->
                 <img
-                  v-if="streamUrl"
-                  :src="streamUrl"
-                  alt="live stream"
-                  class="ai-image"
-                  @error="onStreamError"
-                />
-                <!-- 降级方案：若无推流，则使用后端最新静态帧接口 -->
-                <img
-                  v-else-if="rawImageUrl"
+                  v-if="rawImageUrl"
                   :src="rawImageUrl"
-                  alt="live capture"
+                  alt="latest raw frame from server"
                   class="ai-image"
+                  @error="onRawImageError"
                 />
-                <div v-else class="ai-image-placeholder">暂无实时画面</div>
+                <div v-else class="ai-image-placeholder">暂无画面</div>
               </div>
             </div>
 
@@ -224,7 +238,7 @@
               <div class="ai-preview">
                 <!-- AI 服务断开时显示不可用提示（与硬件设备状态相互独立） -->
                 <div v-if="!aiServiceOnline" class="ai-image-placeholder camera-offline">
-                  <div class="camera-offline-icon">🔍</div>
+                  <el-icon class="camera-offline-icon" :size="40"><Search /></el-icon>
                   <div>识别服务不可用</div>
                   <div class="camera-offline-sub">YOLO FastAPI 已断开连接</div>
                 </div>
@@ -245,13 +259,13 @@
           <div class="ai-metadata-row">
             <div class="ai-metric">
               <span class="ai-metric-label">识别结果</span>
-              <span class="ai-metric-value" :style="{ color: !aiServiceOnline ? '#f56c6c' : '' }">
+              <span class="ai-metric-value" :class="{ 'text-danger': !aiServiceOnline }">
                 {{ !aiServiceOnline ? '不可用' : aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
               </span>
             </div>
             <div class="ai-metric">
               <span class="ai-metric-label">置信度</span>
-              <span class="ai-metric-value" :style="{ color: !aiServiceOnline ? '#f56c6c' : '' }">
+              <span class="ai-metric-value" :class="{ 'text-danger': !aiServiceOnline }">
                 {{ !aiServiceOnline ? '不可用' : aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
               </span>
             </div>
@@ -264,7 +278,7 @@
             <div class="ai-metric">
               <span class="ai-metric-label">服务端状态</span>
               <!-- aiServiceOnline 为 false 时固定显示"断开"，优先级高于 message 字段 -->
-              <span class="ai-metric-value" :style="{ color: aiServiceOnline ? '#67c23a' : '#f56c6c' }">
+              <span class="ai-metric-value" :class="aiServiceOnline ? 'text-success' : 'text-danger'">
                 {{ aiServiceOnline ? '正常' : '断开' }}
               </span>
             </div>
@@ -284,20 +298,47 @@
       class="error-alert"
     />
 
+    </main>
+
     <!-- ===== 页脚：数据来源说明 ===== -->
-    <div class="footer">
-      <span>数据源：OneNET AIoT 平台 | 推理服务：YOLO FastAPI | 每 2 秒自动刷新</span>
-    </div>
+    <footer class="footer">
+      <div class="footer-inner page-shell">
+        <span class="footer-pill">OneNET AIoT</span>
+        <span class="footer-dot" aria-hidden="true">·</span>
+        <span class="footer-pill">YOLO FastAPI</span>
+        <span class="footer-dot" aria-hidden="true">·</span>
+        <span>每 2 秒自动刷新</span>
+      </div>
+    </footer>
   </div>
 </template>
 
 <script setup>
-// Element Plus 刷新图标
-import { Moon, Refresh, Sunny } from '@element-plus/icons-vue'
+// Element Plus 图标（ui-ux-pro-max：避免用 emoji 作为界面图标）
+import {
+  Cellphone,
+  Connection,
+  DataBoard,
+  Lightning,
+  Monitor,
+  Moon,
+  Refresh,
+  Search,
+  Setting,
+  Sunny,
+  TrendCharts
+} from '@element-plus/icons-vue'
+
+/** 仓位 key → 图标组件 */
+const BIN_ICONS = {
+  phone: Cellphone,
+  mouse: Connection,
+  battery: Lightning
+}
 // ElMessage 显式导入，不依赖 auto-import（避免 Vite transform 失效时静默无反馈）
 import { ElMessage } from 'element-plus'
 // AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
-import { fetchLatestAiResult, fetchCamInfo, fetchConfig, updateConfig } from '../api/ai'
+import { fetchLatestAiResult, fetchConfig, updateConfig } from '../api/ai'
 // OneNET 平台 API：获取设备物模型属性、下发满溢阈值
 import { fetchDeviceProperties, setOverflowThresholdOnDevice, setAiConfThresholdOnDevice } from '../api/oneNet'
 // 历史数据存储：每次成功获取属性后追加数据点
@@ -345,9 +386,9 @@ function getBinProgressStatus(percent, full) {
 
 /** 三个回收仓的元数据，key 与 OneNET 物模型属性前缀一致 */
 const BINS = [
-  { key: 'phone',   name: '手机仓', icon: '📱' },
-  { key: 'mouse',   name: '数码配件仓', icon: '🔌' },
-  { key: 'battery', name: '电池仓', icon: '🔋' }
+  { key: 'phone',   name: '手机仓' },
+  { key: 'mouse',   name: '数码配件仓' },
+  { key: 'battery', name: '电池仓' }
 ]
 
 /** 仪表盘最新数据本地持久化（刷新后恢复，避免回到全零初始态） */
@@ -407,8 +448,10 @@ const dashboardSnapshot = loadDashboardCache()
 
 /** 手动刷新按钮的 loading 状态（仅手动点击时激活，不受自动轮询影响） */
 const manualLoading = ref(false)
-/** 防并发锁（自动轮询与手动请求共用） */
-const loading = ref(false)
+/** 设备数据轮询中的防并发锁 */
+const deviceLoading = ref(false)
+/** AI 结果轮询中的防并发锁 */
+const aiLoading = ref(false)
 /** 是否开启自动刷新（与定时器联动） */
 const autoRefresh = ref(true)
 /** 最后一次成功刷新的本地时间字符串 */
@@ -417,11 +460,8 @@ const lastUpdateTime = ref(
 )
 /** 全局错误提示文本，非空时显示警告横幅 */
 const errorMsg = ref('')
-/** 降级静态帧 URL（/ai-api/latest-raw-image），每次刷新追加时间戳防缓存 */
+/** 静态原图 URL（/ai-api/latest-raw-image），每次轮询刷新时间戳防缓存 */
 const rawImageUrl = ref('')
-/** MJPEG 推流地址，由 /api/cam-info 返回；空则降级为静态帧 */
-const STREAM_URL_CACHE_KEY = 'esp32_stream_url'
-const streamUrl = ref(localStorage.getItem(STREAM_URL_CACHE_KEY) || '')
 /** YOLO FastAPI 服务是否可达；与硬件设备在线状态相互独立 */
 const aiServiceOnline = ref(true)
 
@@ -446,10 +486,17 @@ const aiResult = ref(mergeCachedAiResult(dashboardSnapshot?.aiResult))
 // 定时器
 // ───────────────────────────────────────────
 
-/** setInterval 返回的定时器句柄，null 表示当前未启动 */
-let refreshTimer = null
-/** 自动刷新间隔（毫秒） */
-const REFRESH_INTERVAL = 2000
+/** setInterval 返回的设备刷新定时器句柄，null 表示当前未启动 */
+let deviceRefreshTimer = null
+/** setInterval 返回的 AI 刷新定时器句柄，null 表示当前未启动 */
+let aiRefreshTimer = null
+/** 设备属性自动刷新间隔（毫秒）；外部云平台接口较慢，轮询频率适当放低 */
+const DEVICE_REFRESH_INTERVAL = 5000
+/** AI 识别结果自动刷新间隔（毫秒）；与相机上传节奏保持接近 */
+const AI_REFRESH_INTERVAL = 1500
+/** 复用进行中的请求，避免定时器 tick 与手动刷新互相打断 */
+let deviceRefreshJob = null
+let aiRefreshJob = null
 
 // ───────────────────────────────────────────
 // 数据处理
@@ -512,66 +559,85 @@ function saveDashboardCache() {
 // 数据拉取
 // ───────────────────────────────────────────
 
+function refreshRawImage() {
+  rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
+}
+
 /**
- * 并行拉取设备数据与 AI 推理结果（两路独立，互不阻塞）。
- * 摄像头流地址仅在挂载时初始化一次，不纳入轮询，避免重置 MJPEG 连接。
+ * 拉取 OneNET 设备数据；与 AI 轮询解耦，避免外部云平台变慢时拖住图片刷新。
+ */
+function fetchDeviceData() {
+  if (deviceRefreshJob) return deviceRefreshJob
+
+  errorMsg.value = ''
+  deviceLoading.value = true
+  deviceRefreshJob = (async () => {
+    try {
+      const data = await fetchDeviceProperties()
+      properties.value = data
+      lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
+      addDataPoint(data)
+      // 未打开设置且未在保存时：用 OneNET 查询结果持续同步表单，与云平台展示一致，打开设置即无需等待
+      if (!settingsVisible.value && !settingsSaving.value) {
+        if (data.aiConfThreshold != null && Number.isFinite(data.aiConfThreshold)) {
+          settingsForm.value.confThreshold = data.aiConfThreshold
+        }
+        if (data.overflowThresholdG != null && Number.isFinite(data.overflowThresholdG)) {
+          settingsForm.value.overflowThresholdG = data.overflowThresholdG
+        }
+      }
+      saveDashboardCache()
+    } catch (err) {
+      errorMsg.value = `设备数据获取失败：${err?.message}`
+      console.error('[Dashboard] fetchDeviceProperties error:', err)
+    } finally {
+      deviceLoading.value = false
+      deviceRefreshJob = null
+    }
+  })()
+
+  return deviceRefreshJob
+}
+
+/**
+ * 拉取 AI 推理结果与最新图片；独立于设备属性刷新，确保图片不被 OneNET 慢请求拖住。
+ */
+function fetchAiData() {
+  if (aiRefreshJob) return aiRefreshJob
+
+  aiLoading.value = true
+  aiRefreshJob = (async () => {
+    try {
+      const payload = await fetchLatestAiResult()
+      aiServiceOnline.value = true
+      aiResult.value = normalizeAiResult(payload)
+      refreshRawImage()
+      saveDashboardCache()
+    } catch (err) {
+      aiServiceOnline.value = false
+      aiResult.value = { ...aiResult.value, ok: false, imageUrl: '', message: '断开' }
+      console.error('[Dashboard] fetchLatestAiResult error:', err)
+    } finally {
+      aiLoading.value = false
+      aiRefreshJob = null
+    }
+  })()
+
+  return aiRefreshJob
+}
+
+/**
+ * 手动刷新时同时等待设备数据与 AI 数据完成；自动轮询则由两条独立定时器分别驱动。
  */
 async function fetchAll(manual = false) {
-  // 防止并发重复请求
-  if (loading.value) return
-  loading.value = true
+  if (manual && manualLoading.value) return
   if (manual) manualLoading.value = true
-  errorMsg.value = ''
 
-  // 两路请求并行发出，总耗时取决于较慢的那一路，而非两路之和
-  const [deviceResult, aiResult_] = await Promise.allSettled([
-    fetchDeviceProperties(),
-    fetchLatestAiResult()
-  ])
-
-  if (deviceResult.status === 'fulfilled') {
-    properties.value = deviceResult.value
-    lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
-    addDataPoint(deviceResult.value)
-    // 未打开设置且未在保存时：用 OneNET 查询结果持续同步表单，与云平台展示一致，打开设置即无需等待
-    if (!settingsVisible.value && !settingsSaving.value) {
-      const d = deviceResult.value
-      if (d.aiConfThreshold != null && Number.isFinite(d.aiConfThreshold)) {
-        settingsForm.value.confThreshold = d.aiConfThreshold
-      }
-      if (d.overflowThresholdG != null && Number.isFinite(d.overflowThresholdG)) {
-        settingsForm.value.overflowThresholdG = d.overflowThresholdG
-      }
-    }
-  } else {
-    errorMsg.value = `设备数据获取失败：${deviceResult.reason?.message}`
-    console.error('[Dashboard] fetchDeviceProperties error:', deviceResult.reason)
+  try {
+    await Promise.allSettled([fetchDeviceData(), fetchAiData()])
+  } finally {
+    if (manual) manualLoading.value = false
   }
-
-  if (aiResult_.status === 'fulfilled') {
-    const wasOffline = !aiServiceOnline.value
-    aiServiceOnline.value = true
-    aiResult.value = normalizeAiResult(aiResult_.value)
-    // 更新静态帧时间戳（防浏览器缓存）
-    rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
-    // AI 后端从离线恢复，或挂载时 streamUrl 未能初始化，则重新拉取流地址
-    if ((wasOffline || !streamUrl.value)) {
-      fetchCamInfo().then(camInfo => {
-        if (camInfo?.stream_url) {
-          streamUrl.value = camInfo.stream_url
-          localStorage.setItem(STREAM_URL_CACHE_KEY, camInfo.stream_url)
-        }
-      }).catch(() => {})
-    }
-  } else {
-    aiServiceOnline.value = false
-    aiResult.value = { ...aiResult.value, ok: false, imageUrl: '', message: '断开' }
-    console.error('[Dashboard] fetchLatestAiResult error:', aiResult_.reason)
-  }
-
-  saveDashboardCache()
-  loading.value = false
-  if (manual) manualLoading.value = false
 }
 
 // ───────────────────────────────────────────
@@ -580,15 +646,24 @@ async function fetchAll(manual = false) {
 
 /** 启动定时器（幂等，重复调用无副作用） */
 function startAutoRefresh() {
-  if (refreshTimer) return
-  refreshTimer = setInterval(fetchAll, REFRESH_INTERVAL)
+  if (!deviceRefreshTimer) {
+    deviceRefreshTimer = setInterval(fetchDeviceData, DEVICE_REFRESH_INTERVAL)
+  }
+  if (!aiRefreshTimer) {
+    aiRefreshTimer = setInterval(fetchAiData, AI_REFRESH_INTERVAL)
+  }
 }
 
 /** 停止定时器（幂等，重复调用无副作用） */
 function stopAutoRefresh() {
-  if (!refreshTimer) return
-  clearInterval(refreshTimer)
-  refreshTimer = null
+  if (deviceRefreshTimer) {
+    clearInterval(deviceRefreshTimer)
+    deviceRefreshTimer = null
+  }
+  if (aiRefreshTimer) {
+    clearInterval(aiRefreshTimer)
+    aiRefreshTimer = null
+  }
 }
 
 /**
@@ -610,20 +685,9 @@ function onAutoRefreshChange(val) {
 
 onMounted(async () => {
   // rawImageUrl 无论 AI 后端是否在线都先赋值，避免后端离线时左侧完全空白
-  rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
+  refreshRawImage()
 
-  // 并行初始化：摄像头流地址 + 系统配置
-  const [camResult, configResult] = await Promise.allSettled([
-    fetchCamInfo(),
-    fetchConfig()
-  ])
-
-  if (camResult.status === 'fulfilled' && camResult.value?.stream_url) {
-    streamUrl.value = camResult.value.stream_url
-    localStorage.setItem(STREAM_URL_CACHE_KEY, camResult.value.stream_url)
-  } else if (camResult.status === 'rejected') {
-    console.error('[Dashboard] init fetchCamInfo error:', camResult.reason)
-  }
+  const [configResult] = await Promise.allSettled([fetchConfig()])
 
   // 无本地缓存时用语义服务默认配置；已有缓存则保留刷新前的设置/设备快照
   if (configResult.status === 'fulfilled' && !dashboardSnapshot) {
@@ -642,8 +706,8 @@ onUnmounted(() => {
   stopAutoRefresh()
 })
 
-function onStreamError() {
-  streamUrl.value = ''  // 降级为 rawImageUrl 静态帧
+function onRawImageError() {
+  refreshRawImage()
 }
 
 function onAnnotatedImageError() {
@@ -768,12 +832,12 @@ async function saveSettings() {
 </script>
 
 <style scoped>
-/* ===== 根容器 ===== */
+/* ===== 根容器（简洁平面背景）===== */
 .dashboard {
   min-height: 100vh;
   background: var(--color-page-bg);
-  padding: 70px 0 40px;
-  transition: background 0.3s ease;
+  padding: 78px 0 40px;
+  transition: background 0.25s ease;
 }
 
 /* ===== 顶部导航栏 ===== */
@@ -784,7 +848,7 @@ async function saveSettings() {
   flex-wrap: wrap;
   gap: 12px;
   padding: 0 28px;
-  height: 64px;
+  min-height: 64px;
   background: var(--color-header-bg);
   border-bottom: 1px solid var(--color-border);
   box-shadow: var(--color-shadow);
@@ -795,6 +859,7 @@ async function saveSettings() {
   left: 0;
   right: 0;
   z-index: 100;
+  border-bottom: 2px solid var(--color-primary);
 }
 
 .header-left {
@@ -803,25 +868,84 @@ async function saveSettings() {
   gap: 12px;
 }
 
-.header-center {
+/* 品牌区 */
+.brand-block {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 14px;
 }
 
-.device-info {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
+.brand-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  color: var(--color-primary);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+[data-theme='dark'] .brand-icon-wrap {
+  color: var(--color-accent);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
   white-space: nowrap;
+}
+
+.title-tagline {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.08em;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.device-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.device-chip-icon {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+.device-chip-muted {
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 状态指示圆点 */
@@ -878,31 +1002,80 @@ async function saveSettings() {
 
 /* 自动刷新开关主题色 */
 .auto-switch {
-  --el-switch-on-color: var(--color-accent);
+  --el-switch-on-color: var(--color-primary);
 }
 
 /* ===== 满溢警告横幅 ===== */
 .full-alert {
-  margin: 0 24px 10px;
+  margin: 0 0 10px;
   border-radius: 10px;
 }
 
-/* ===== 卡片行间距 ===== */
+/* ===== 分区标题 ===== */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+  padding-top: 4px;
+}
+
+.section-head-first {
+  margin-top: 4px;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: 0.04em;
+}
+
+.section-label::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  margin-right: 10px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  vertical-align: -2px;
+}
+
+.section-hint {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+/* ===== 卡片行间距（主区域已含 page-main 边距）===== */
 .card-row {
-  padding: 0 24px;
+  padding: 0;
 }
 
 /* ===== 垃圾桶仓位卡片 ===== */
 .bin-card {
-  border-radius: 14px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
   margin-bottom: 20px;
+  border: 1px solid var(--color-border);
 }
 
 .bin-card:hover,
 .ai-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  transform: translateY(-3px);
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.04),
+    0 12px 32px rgba(15, 30, 55, 0.1);
+}
+
+[data-theme='dark'] .bin-card:hover,
+[data-theme='dark'] .ai-card:hover {
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.35),
+    0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
 /* 满溢：红色边框 + 主题适配背景 */
@@ -931,9 +1104,24 @@ async function saveSettings() {
   margin-bottom: 18px;
 }
 
-.bin-icon {
-  font-size: 26px;
-  line-height: 1;
+.bin-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.bin-icon-el {
+  color: var(--color-primary);
+}
+
+[data-theme='dark'] .bin-icon-el {
+  color: var(--color-accent);
 }
 
 .bin-name {
@@ -1010,9 +1198,11 @@ async function saveSettings() {
 
 /* ===== AI 卡片 ===== */
 .ai-card {
-  border-radius: 14px;
-  transition: transform 0.2s ease;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
   margin-bottom: 20px;
+  border: 1px solid var(--color-border);
 }
 
 /* ===== AI 面板头 ===== */
@@ -1021,7 +1211,9 @@ async function saveSettings() {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .ai-title {
@@ -1096,10 +1288,11 @@ async function saveSettings() {
 
 /* 图像容器 */
 .ai-preview {
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   flex: 1;
 }
 
@@ -1129,9 +1322,8 @@ async function saveSettings() {
 }
 
 .camera-offline-icon {
-  font-size: 36px;
-  filter: grayscale(1);
-  opacity: 0.4;
+  color: var(--color-text-tertiary);
+  opacity: 0.65;
 }
 
 .camera-offline-sub {
@@ -1168,20 +1360,53 @@ async function saveSettings() {
   word-break: break-word;
 }
 
+.ai-metric-value.text-danger {
+  color: var(--color-danger);
+}
+
+.ai-metric-value.text-success {
+  color: var(--color-success);
+}
+
 /* ===== 错误提示 ===== */
 .error-alert {
-  margin: 12px 24px 0;
+  margin: 12px 0 0;
   border-radius: 10px;
 }
 
 /* ===== 页脚 ===== */
 .footer {
   text-align: center;
-  padding: 24px;
-  font-size: 12px;
-  color: var(--color-text-disabled);
+  padding: 24px 0 28px;
+  margin-top: 8px;
   border-top: 1px solid var(--color-border);
-  margin: 0 24px;
+}
+
+.footer-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.footer-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.footer-dot {
+  color: var(--color-text-disabled);
+  user-select: none;
 }
 
 /* ===== 响应式 ===== */
@@ -1204,16 +1429,37 @@ async function saveSettings() {
     border-bottom: 1px solid var(--color-border);
   }
 
-  .card-row,
-  .full-alert,
-  .error-alert {
+  .page-main {
     padding-left: 16px;
     padding-right: 16px;
   }
 
   .header {
-    height: auto;
+    min-height: auto;
     padding: 12px 16px;
+  }
+
+  .brand-block {
+    align-items: flex-start;
+  }
+
+  .title {
+    white-space: normal;
+    font-size: 15px;
+  }
+
+  .title-tagline {
+    display: none;
+  }
+
+  .device-chip-muted {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>
