@@ -49,19 +49,19 @@ body {
   --color-accent-light: rgba(59, 130, 246, 0.12);
   --color-cta: #f59e0b;
   --color-cta-light: rgba(245, 158, 11, 0.12);
-  --color-success: #059669;
-  --color-success-bg: rgba(5, 150, 105, 0.1);
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.1);
   --color-warning: #d97706;
   --color-warning-bg: rgba(217, 119, 6, 0.1);
-  --color-danger: #dc2626;
-  --color-danger-bg: rgba(220, 38, 38, 0.08);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.08);
 
   /* 仓位卡片状态 */
-  --card-normal-border: #059669;
+  --card-normal-border: #10b981;
   --card-normal-bg: #ffffff;
   --card-warning-border: #d97706;
   --card-warning-bg: #fffbeb;
-  --card-full-border: #dc2626;
+  --card-full-border: #ef4444;
   --card-full-bg: #fef2f2;
 
   /* Element Plus 主色对齐设计系统 */
@@ -100,18 +100,18 @@ body {
   --color-accent-light: rgba(96, 165, 250, 0.15);
   --color-cta: #fbbf24;
   --color-cta-light: rgba(251, 191, 36, 0.12);
-  --color-success: #34d399;
-  --color-success-bg: rgba(52, 211, 153, 0.12);
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.12);
   --color-warning: #fbbf24;
   --color-warning-bg: rgba(251, 191, 36, 0.12);
-  --color-danger: #f87171;
-  --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
 
-  --card-normal-border: #34d399;
+  --card-normal-border: #10b981;
   --card-normal-bg: #111827;
   --card-warning-border: #fbbf24;
   --card-warning-bg: #1c1917;
-  --card-full-border: #f87171;
+  --card-full-border: #ef4444;
   --card-full-bg: #1c1416;
 
   --el-color-primary: #3b82f6;

@@ -19,17 +19,32 @@
 
       <!-- 中部：设备状态信息 -->
       <div class="header-center">
-        <el-tag :type="properties.online ? 'success' : 'danger'" class="status-tag" effect="light">
-          <span class="status-dot" :class="properties.online ? 'online' : 'offline'"></span>
-          {{ properties.online ? '设备在线' : '设备离线' }}
-        </el-tag>
+        <el-tooltip content="设备状态：与 OneNET 物联网平台的通信状态" placement="bottom">
+          <div class="status-indicator">
+            <span class="status-dot" :class="properties.online ? 'online' : 'offline'"></span>
+            <span class="status-text">{{ properties.online ? '设备就绪' : '设备离线' }}</span>
+          </div>
+        </el-tooltip>
+        <el-tooltip content="AI推理：ESP32-CAM与YOLO视觉分析服务" placement="bottom">
+          <div class="status-indicator">
+            <span class="status-dot" :class="aiServiceOnline ? 'online' : 'offline'"></span>
+            <span class="status-text">{{ aiServiceOnline ? '推理在线' : '推理断开' }}</span>
+          </div>
+        </el-tooltip>
         <span class="device-chip">
           <el-icon class="device-chip-icon" :size="14"><Monitor /></el-icon>
           Box1
         </span>
-        <span class="device-chip device-chip-muted" v-if="properties.lastReportTime">
-          最后在线 {{ new Date(properties.lastReportTime).toLocaleString('zh-CN') }}
-        </span>
+        <el-tooltip v-if="properties.lastReportTime" :content="'最后在线：' + new Date(properties.lastReportTime).toLocaleString('zh-CN')" placement="bottom">
+          <span class="device-chip device-chip-muted" style="cursor: help;">
+            <el-icon class="device-chip-icon" :size="14"><Clock /></el-icon>
+          </span>
+        </el-tooltip>
+        <el-tooltip :content="'AI 服务：' + aiServerAddr" placement="bottom">
+          <span class="device-chip device-chip-muted" style="cursor: help;">
+            <el-icon class="device-chip-icon" :size="14"><Connection /></el-icon>
+          </span>
+        </el-tooltip>
       </div>
 
       <!-- 右侧：最后更新时间 + 自动刷新开关 + 手动刷新按钮 -->
@@ -64,8 +79,13 @@
       <el-form label-position="top" :model="settingsForm">
         <el-form-item>
           <template #label>
-            <span>识别置信度阈值</span>
-            <span style="color: var(--el-color-info); font-size: 12px; margin-left: 8px;">当前：{{ settingsForm.confThreshold.toFixed(2) }}（0~1）</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span>识别置信度阈值</span>
+              <el-tooltip content="0.00~1.00，低于此值的检测结果不触发舵机分拣；保存后同步到推理服务与 ESP32-S3（物模型 ai_conf_threshold）" placement="top" :hide-after="0">
+                <el-icon><InfoFilled /></el-icon>
+              </el-tooltip>
+              <span style="color: var(--el-color-info); font-size: 12px; margin-left: auto;">当前：{{ settingsForm.confThreshold.toFixed(2) }}（0~1）</span>
+            </div>
           </template>
           <el-input-number
             v-model="settingsForm.confThreshold"
@@ -75,14 +95,16 @@
             :precision="2"
             style="width: 100%"
           />
-          <div style="font-size: 12px; color: var(--el-color-info-light-3); margin-top: 4px;">
-            0.00~1.00，低于此值的检测结果不触发舵机分拣；保存后同步到推理服务与 ESP32-S3（物模型 ai_conf_threshold）
-          </div>
         </el-form-item>
         <el-form-item>
           <template #label>
-            <span>满溢重量阈值</span>
-            <span style="color: var(--el-color-info); font-size: 12px; margin-left: 8px;">单位：g</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span>满溢重量阈值</span>
+              <el-tooltip content="超过此重量触发满溢警报；与上方置信度阈值一并经 OneNET 同步到设备（物模型 overflow_threshold_g / ai_conf_threshold）" placement="top" :hide-after="0">
+                <el-icon><InfoFilled /></el-icon>
+              </el-tooltip>
+              <span style="color: var(--el-color-info); font-size: 12px; margin-left: auto;">单位：g</span>
+            </div>
           </template>
           <el-input-number
             v-model="settingsForm.overflowThresholdG"
@@ -91,11 +113,13 @@
             :step="50"
             style="width: 100%"
           />
-          <div style="font-size: 12px; color: var(--el-color-info-light-3); margin-top: 4px;">
-            超过此重量触发满溢警报；与上方置信度阈值一并经 OneNET 同步到设备（物模型 overflow_threshold_g / ai_conf_threshold）
-          </div>
         </el-form-item>
       </el-form>
+      <!-- 保存时的逐步同步进度提示 -->
+      <div v-if="settingsSyncMsg" style="margin-top: 12px; font-size: 13px; color: var(--el-color-info); display: flex; align-items: center; gap: 6px;">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        {{ settingsSyncMsg }}
+      </div>
       <!-- 内联错误提示：当 ElMessage toast 不可用时的兜底反馈 -->
       <el-alert
         v-if="settingsErrorMsg"
@@ -106,29 +130,11 @@
         style="margin-top: 12px;"
       />
       <template #footer>
-        <el-button @click="settingsVisible = false">取消</el-button>
+        <el-button @click="settingsVisible = false" :disabled="settingsSaving">取消</el-button>
         <el-button type="primary" :loading="settingsSaving" @click="saveSettings">保存</el-button>
       </template>
     </el-dialog>
 
-    <!-- ===== 满溢警告横幅（仅在某仓满溢时显示）===== -->
-    <template v-for="bin in BINS" :key="bin.key">
-      <el-alert
-        v-if="properties[bin.key].full"
-        :title="`警告：${bin.name}已满溢，请及时清运。`"
-        type="error"
-        :closable="false"
-        show-icon
-        class="full-alert"
-      >
-        <template #default>
-          <span>
-            当前重量 <strong>{{ properties[bin.key].weight }} g</strong>，
-            已达 <strong>{{ properties[bin.key].percent.toFixed(1) }}%</strong>。
-          </span>
-        </template>
-      </el-alert>
-    </template>
 
     <!-- ===== 垃圾桶状态卡片区（手机仓 / 数码配件仓 / 电池仓）===== -->
     <div class="section-head card-row section-head-first">
@@ -136,25 +142,33 @@
       <span class="section-hint">重量与容量来自 OneNET 物模型</span>
     </div>
     <el-row :gutter="20" class="card-row">
-      <!-- 遍历 BINS 常量，每个仓位渲染一张卡片 -->
-      <el-col v-for="bin in BINS" :key="bin.key" :xs="24" :sm="24" :lg="8">
+      <!-- 遍历 binViews（包含预计算的样式与状态），每个仓位渲染一张卡片 -->
+      <el-col v-for="bin in binViews" :key="bin.key" :xs="24" :sm="24" :lg="8">
         <el-card
           class="bin-card"
-          :class="getBinCardClass(properties[bin.key].percent, properties[bin.key].full)"
+          :class="bin.cardClass"
           shadow="hover"
         >
+          <!-- 状态徽标 / 满溢遮罩 -->
+          <div v-if="bin.cardClass === 'card-full'" class="bin-overlay-full">
+            <div class="overlay-content">
+              <el-icon class="overlay-icon"><WarningFilled /></el-icon>
+              <div class="overlay-title">紧急清运</div>
+              <div class="overlay-subtitle">已满溢，请立即处理</div>
+            </div>
+          </div>
+          <div v-else-if="bin.cardClass === 'card-warning'" class="bin-badge badge-warning">
+            <el-icon class="badge-icon"><WarnTriangleFilled /></el-icon> 将满
+          </div>
+
           <!-- 卡片头：图标 + 仓名 + 状态标签 -->
           <div class="bin-header">
             <span class="bin-icon-wrap">
               <el-icon :size="24" class="bin-icon-el"><component :is="BIN_ICONS[bin.key]" /></el-icon>
             </span>
             <span class="bin-name">{{ bin.name }}</span>
-            <el-tag
-              :type="getBinTagType(properties[bin.key].percent, properties[bin.key].full)"
-              size="small"
-              class="bin-status-tag"
-            >
-              {{ getBinStatusText(properties[bin.key].percent, properties[bin.key].full) }}
+            <el-tag :type="bin.tagType" size="small" class="bin-status-tag">
+              {{ bin.statusText }}
             </el-tag>
           </div>
 
@@ -163,29 +177,28 @@
             <div class="metric">
               <div class="metric-label">当前重量</div>
               <div class="metric-value">
-                <span class="value-number">{{ properties[bin.key].weight }}</span>
+                <span class="value-number ds-num" :class="{ 'text-danger': bin.cardClass === 'card-full' }">{{ bin.weight }}</span>
                 <span class="value-unit">g</span>
               </div>
             </div>
             <div class="metric">
               <div class="metric-label">满溢百分比</div>
               <div class="metric-value">
-                <span class="value-number">{{ properties[bin.key].percent.toFixed(1) }}</span>
+                <span class="value-number ds-num" :class="{ 'text-danger': bin.cardClass === 'card-full' }">{{ bin.percent.toFixed(1) }}</span>
                 <span class="value-unit">%</span>
               </div>
             </div>
           </div>
 
           <!-- 进度条：超出 100% 时截断显示，状态颜色与标签保持一致 -->
-          <el-progress
-            :percentage="Math.min(properties[bin.key].percent, 100)"
-            :status="getBinProgressStatus(properties[bin.key].percent, properties[bin.key].full)"
-            :stroke-width="10"
-            class="bin-progress"
-          />
-          <div class="progress-label">
-            容量上限 {{ settingsForm.overflowThresholdG }} g
-          </div>
+          <el-tooltip :content="`容量上限：${settingsForm.overflowThresholdG} g`" placement="bottom">
+            <el-progress
+              :percentage="Math.min(bin.percent, 100)"
+              :status="bin.progress"
+              :stroke-width="10"
+              class="bin-progress"
+            />
+          </el-tooltip>
         </el-card>
       </el-col>
     </el-row>
@@ -203,7 +216,7 @@
           <div class="ai-header">
             <div>
               <div class="ai-title">模型识别结果</div>
-              <div class="ai-subtitle">左：最新采集帧（与推理同步刷新） | 右：YOLO 识别结果（含边界框）</div>
+              <div class="ai-subtitle">左：ESP32-CAM 实时画面（MJPEG，无流时降级为服务端最新帧） | 右：YOLO 识别结果（含边界框）</div>
             </div>
             <!-- 根据最新推理结果判断是否检测到目标 -->
             <el-tag :type="aiResult.ok ? 'success' : 'info'" effect="light">
@@ -213,20 +226,40 @@
 
           <!-- 双列图像区 -->
           <div class="ai-dual-panel">
-            <!-- 左侧：服务端保存的最新原始帧（与每次 /infer 同步，避免 ESP32 侧 MJPEG 卡顿） -->
+            <!-- 左侧：优先 ESP32-CAM MJPEG 实时流；无流地址时降级为服务端 latest-raw-image 轮询 -->
             <div class="ai-panel">
               <div class="panel-label">
-                <span class="panel-dot" :class="properties.online ? 'live-dot' : 'offline-dot'"></span>最新采集帧
+                <span class="panel-dot" :class="mjpegStreamUrl ? (mjpegStreamReady ? 'live-dot' : 'connecting-dot') : 'offline-dot'"></span>
+                {{ mjpegStreamUrl ? (mjpegStreamReady ? '实时流' : '连接中…') : '降级帧' }}
               </div>
-              <div class="ai-preview">
-                <img
-                  v-if="rawImageUrl"
-                  :src="rawImageUrl"
-                  alt="latest raw frame from server"
-                  class="ai-image"
-                  @error="onRawImageError"
-                />
-                <div v-else class="ai-image-placeholder">暂无画面</div>
+              <div class="ai-preview ai-preview-stream ai-preview-stack">
+                <!-- MJPEG 与推理轮询共用 latest-raw：底层预加载一帧，断流时减轻白屏 -->
+                <template v-if="mjpegStreamUrl">
+                  <img
+                    v-if="rawImageUrl"
+                    :src="rawImageUrl"
+                    class="ai-image ai-image-stream-fallback"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <img
+                    :src="mjpegStreamDisplaySrc"
+                    alt="ESP32-CAM MJPEG stream"
+                    class="ai-image ai-image-mjpeg"
+                    @load="onStreamImageLoad"
+                    @error="onStreamImageError"
+                  />
+                </template>
+                <template v-else>
+                  <img
+                    v-if="rawImageUrl"
+                    :src="rawImageUrl"
+                    alt="latest raw frame from server"
+                    class="ai-image"
+                    @error="onRawImageError"
+                  />
+                  <div v-else class="ai-image-placeholder">暂无画面</div>
+                </template>
               </div>
             </div>
 
@@ -257,28 +290,28 @@
 
           <!-- 推理元数据横向指标行：类别 / 置信度 / 时间戳 / 服务状态 -->
           <div class="ai-metadata-row">
-            <div class="ai-metric">
+            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
               <span class="ai-metric-label">识别结果</span>
-              <span class="ai-metric-value" :class="{ 'text-danger': !aiServiceOnline }">
+              <span class="ai-metric-value" :class="{ 'text-danger-strong': !aiServiceOnline, 'text-success-bold ds-pop': aiResult.ok && aiServiceOnline }">
                 {{ !aiServiceOnline ? '不可用' : aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
               </span>
             </div>
-            <div class="ai-metric">
+            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
               <span class="ai-metric-label">置信度</span>
-              <span class="ai-metric-value" :class="{ 'text-danger': !aiServiceOnline }">
+              <span class="ai-metric-value" :class="{ 'text-danger-strong': !aiServiceOnline, 'text-success-bold ds-num ds-pop': aiResult.ok && aiServiceOnline }">
                 {{ !aiServiceOnline ? '不可用' : aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
               </span>
             </div>
-            <div class="ai-metric">
+            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
               <span class="ai-metric-label">更新时间</span>
-              <span class="ai-metric-value">
+              <span class="ai-metric-value ds-num">
                 {{ aiResult.timestamp ? new Date(aiResult.timestamp).toLocaleString('zh-CN') : '尚无记录' }}
               </span>
             </div>
-            <div class="ai-metric">
+            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
               <span class="ai-metric-label">服务端状态</span>
               <!-- aiServiceOnline 为 false 时固定显示"断开"，优先级高于 message 字段 -->
-              <span class="ai-metric-value" :class="aiServiceOnline ? 'text-success' : 'text-danger'">
+              <span class="ai-metric-value" :class="aiServiceOnline ? 'text-success-bold' : 'text-danger-strong ds-pulse-text'">
                 {{ aiServiceOnline ? '正常' : '断开' }}
               </span>
             </div>
@@ -317,8 +350,10 @@
 // Element Plus 图标（ui-ux-pro-max：避免用 emoji 作为界面图标）
 import {
   Cellphone,
+  Clock,
   Connection,
   DataBoard,
+  InfoFilled,
   Lightning,
   Monitor,
   Moon,
@@ -326,7 +361,9 @@ import {
   Search,
   Setting,
   Sunny,
-  TrendCharts
+  TrendCharts,
+  WarningFilled,
+  WarnTriangleFilled
 } from '@element-plus/icons-vue'
 
 /** 仓位 key → 图标组件 */
@@ -335,10 +372,10 @@ const BIN_ICONS = {
   mouse: Connection,
   battery: Lightning
 }
-// ElMessage 显式导入，不依赖 auto-import（避免 Vite transform 失效时静默无反馈）
-import { ElMessage } from 'element-plus'
+// ElMessage, ElNotification 显式导入，不依赖 auto-import（避免 Vite transform 失效时静默无反馈）
+import { ElMessage, ElNotification } from 'element-plus'
 // AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
-import { fetchLatestAiResult, fetchConfig, updateConfig } from '../api/ai'
+import { fetchLatestAiResult, fetchConfig, updateConfig, fetchCamInfo } from '../api/ai'
 // OneNET 平台 API：获取设备物模型属性、下发满溢阈值
 import { fetchDeviceProperties, setOverflowThresholdOnDevice, setAiConfThresholdOnDevice } from '../api/oneNet'
 // 历史数据存储：每次成功获取属性后追加数据点
@@ -352,33 +389,24 @@ const toggleTheme = inject('toggleTheme', () => {})
 // 辅助函数：根据百分比/满溢状态计算展示样式
 // ───────────────────────────────────────────
 
-/** 返回仓位卡片的 CSS 类名（正常 / 警告 / 满溢） */
-function getBinCardClass(percent, full) {
-  if (full || percent >= 100) return 'card-full'
-  if (percent >= 80) return 'card-warning'
-  return 'card-normal'
-}
-
-/** 返回状态标签的 Element Plus type（danger / warning / success） */
-function getBinTagType(percent, full) {
-  if (full || percent >= 100) return 'danger'
-  if (percent >= 80) return 'warning'
-  return 'success'
-}
-
-/** 返回状态标签的文字（已满 / 警告 / 正常） */
-function getBinStatusText(percent, full) {
-  if (full || percent >= 100) return '已满'
-  if (percent >= 80) return '警告'
-  return '正常'
-}
-
-/** 返回进度条的状态（exception / warning / ''） */
-function getBinProgressStatus(percent, full) {
-  if (full || percent >= 100) return 'exception'
-  if (percent >= 80) return 'warning'
-  return ''
-}
+/** 根据重量百分比和满溢标志返回各 UI 属性，集中维护三档阈值逻辑 */
+const binViews = computed(() =>
+  BINS.map((b) => {
+    const { weight, percent, full } = properties.value[b.key]
+    const isFull = full || percent >= 100
+    const isWarn = !isFull && percent >= 80
+    return {
+      ...b,
+      weight,
+      percent,
+      full,
+      cardClass:  isFull ? 'card-full'   : isWarn ? 'card-warning' : 'card-normal',
+      tagType:    isFull ? 'danger'       : isWarn ? 'warning'      : 'success',
+      statusText: isFull ? '已满'         : isWarn ? '警告'         : '正常',
+      progress:   isFull ? 'exception'   : isWarn ? 'warning'      : '',
+    }
+  })
+)
 
 // ───────────────────────────────────────────
 // 常量：仓位配置
@@ -460,8 +488,31 @@ const lastUpdateTime = ref(
 )
 /** 全局错误提示文本，非空时显示警告横幅 */
 const errorMsg = ref('')
-/** 静态原图 URL（/ai-api/latest-raw-image），每次轮询刷新时间戳防缓存 */
+/** 静态原图 URL（/ai-api/latest-raw-image），无 MJPEG 流时轮询刷新时间戳防缓存 */
 const rawImageUrl = ref('')
+/** ESP32-CAM MJPEG 流基础 URL（由 /cam-info 返回，或由同源代理 /ai-api/cam-stream 提供） */
+const mjpegStreamUrl = ref('')
+/** MJPEG 首帧是否已成功显示；未就绪时保留 latest-raw 兜底，避免空白 */
+const mjpegStreamReady = ref(false)
+/** 破坏浏览器 MJPEG 长连接缓存、触发软重连的递增参数 */
+const mjpegReconnectNonce = ref(Date.now())
+/** 为 true 时左侧固定走 FastAPI 同源代理，不直连摄像头 IP（需服务端实现 GET /cam-stream） */
+const USE_CAM_STREAM_PROXY = import.meta.env.VITE_CAM_STREAM_PROXY === 'true'
+
+/** 带防缓存查询串的 MJPEG 地址，供 <img> 使用 */
+const mjpegStreamDisplaySrc = computed(() => {
+  const base = mjpegStreamUrl.value
+  if (!base) return ''
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}_r=${mjpegReconnectNonce.value}`
+})
+
+/** /cam-info 连续返回空 stream_url 的次数，达到阈值才清空左侧流地址，避免偶发空响应误杀 */
+let camInfoEmptyStreak = 0
+/** /cam-info 连续请求失败次数，达到阈值才清空，避免单次网络抖动清空 */
+let camInfoErrorStreak = 0
+/** MJPEG <img> 连续触发 error 的次数；达到阈值后再真正切回 latest-raw */
+let mjpegErrorStreak = 0
 /** YOLO FastAPI 服务是否可达；与硬件设备在线状态相互独立 */
 const aiServiceOnline = ref(true)
 
@@ -471,6 +522,10 @@ const aiServiceOnline = ref(true)
 const settingsVisible = ref(false)
 const settingsSaving = ref(false)
 const settingsErrorMsg = ref('')   // 对话框内联错误文本（ElMessage 失效时的兜底显示）
+const settingsSyncMsg = ref('')    // 保存过程中显示当前正在执行的步骤
+
+/** 当前推理服务地址（从环境变量读取，仅用于 Header 显示，方便答辩现场自检） */
+const aiServerAddr = `${import.meta.env.VITE_AI_SERVER_HOST || '192.168.0.168'}:${import.meta.env.VITE_AI_SERVER_PORT || '8000'}`
 const settingsForm = ref({
   confThreshold: Number(dashboardSnapshot?.settingsForm?.confThreshold ?? 0.70),
   overflowThresholdG: Number(dashboardSnapshot?.settingsForm?.overflowThresholdG ?? 1000)
@@ -490,13 +545,25 @@ const aiResult = ref(mergeCachedAiResult(dashboardSnapshot?.aiResult))
 let deviceRefreshTimer = null
 /** setInterval 返回的 AI 刷新定时器句柄，null 表示当前未启动 */
 let aiRefreshTimer = null
-/** 设备属性自动刷新间隔（毫秒）；外部云平台接口较慢，轮询频率适当放低 */
-const DEVICE_REFRESH_INTERVAL = 5000
+/** 定时拉取 /cam-info，设备上线或首次推理后补全 MJPEG 地址 */
+let camInfoTimer = null
+/** 设备属性自动刷新间隔（毫秒）；与 S3 MQTT 上报周期 3s 对齐，缩短最坏延迟 */
+const DEVICE_REFRESH_INTERVAL = 3000
 /** AI 识别结果自动刷新间隔（毫秒）；与相机上传节奏保持接近 */
 const AI_REFRESH_INTERVAL = 1500
+/** 摄像头流地址刷新间隔（毫秒）；与设备轮询对齐，让相机地址更快被发现 */
+const CAM_INFO_INTERVAL = 3000
+/** MJPEG 异常后的延迟重连间隔；给浏览器与代理一点恢复时间，避免连续空白闪烁 */
+const MJPEG_RETRY_DELAY_MS = 1200
+/** MJPEG 连续报错达到阈值后才回退为 latest-raw，避免单次抖动直接白屏 */
+const MJPEG_ERROR_RETRY_LIMIT = 3
+/** /cam-info 连续异常达到阈值且当前流未建立时，再放弃 MJPEG */
+const CAM_INFO_CLEAR_THRESHOLD = 4
 /** 复用进行中的请求，避免定时器 tick 与手动刷新互相打断 */
 let deviceRefreshJob = null
 let aiRefreshJob = null
+/** MJPEG 延迟重连定时器；只在确认流异常时才触发软重连 */
+let mjpegRetryTimer = null
 
 // ───────────────────────────────────────────
 // 数据处理
@@ -559,8 +626,63 @@ function saveDashboardCache() {
 // 数据拉取
 // ───────────────────────────────────────────
 
-function refreshRawImage() {
+function refreshRawImage(force = false) {
+  if (!force && mjpegStreamUrl.value) {
+    return
+  }
   rawImageUrl.value = `/ai-api/latest-raw-image?t=${Date.now()}`
+}
+
+function clearMjpegRetryTimer() {
+  if (mjpegRetryTimer) {
+    clearTimeout(mjpegRetryTimer)
+    mjpegRetryTimer = null
+  }
+}
+
+function resetMjpegState() {
+  mjpegStreamReady.value = false
+  mjpegErrorStreak = 0
+  clearMjpegRetryTimer()
+}
+
+/**
+ * 从推理服务读取 ESP32-CAM MJPEG 地址；无地址时左侧自动用 latest-raw-image。
+ * 同源代理模式下固定使用 /ai-api/cam-stream，不依赖 cam-info 的直连 URL。
+ */
+async function refreshCamStreamInfo() {
+  if (USE_CAM_STREAM_PROXY) {
+    camInfoEmptyStreak = 0
+    camInfoErrorStreak = 0
+    if (mjpegStreamUrl.value !== '/ai-api/cam-stream') {
+      mjpegStreamUrl.value = '/ai-api/cam-stream'
+    }
+    return
+  }
+  try {
+    const { stream_url: url } = await fetchCamInfo()
+    const next = typeof url === 'string' ? url.trim() : ''
+    camInfoErrorStreak = 0
+    if (next) {
+      camInfoEmptyStreak = 0
+      if (mjpegStreamUrl.value !== next) {
+        mjpegStreamUrl.value = next
+      }
+      return
+    }
+    camInfoEmptyStreak++
+    if (camInfoEmptyStreak >= CAM_INFO_CLEAR_THRESHOLD && !mjpegStreamUrl.value) {
+      mjpegStreamUrl.value = ''
+      refreshRawImage(true)
+    }
+  } catch (err) {
+    camInfoErrorStreak++
+    console.warn('[Dashboard] fetchCamInfo error:', err)
+    if (camInfoErrorStreak >= CAM_INFO_CLEAR_THRESHOLD && !mjpegStreamUrl.value) {
+      mjpegStreamUrl.value = ''
+      refreshRawImage(true)
+    }
+  }
 }
 
 /**
@@ -634,7 +756,7 @@ async function fetchAll(manual = false) {
   if (manual) manualLoading.value = true
 
   try {
-    await Promise.allSettled([fetchDeviceData(), fetchAiData()])
+    await Promise.allSettled([fetchDeviceData(), fetchAiData(), refreshCamStreamInfo()])
   } finally {
     if (manual) manualLoading.value = false
   }
@@ -644,6 +766,21 @@ async function fetchAll(manual = false) {
 // 自动刷新控制
 // ───────────────────────────────────────────
 
+/** bump MJPEG 重连参数，强制 <img> 重新建立 multipart 连接 */
+function bumpMjpegReconnect() {
+  mjpegReconnectNonce.value = Date.now()
+}
+
+function scheduleMjpegReconnect() {
+  if (!mjpegStreamUrl.value || mjpegRetryTimer) return
+  mjpegRetryTimer = setTimeout(() => {
+    mjpegRetryTimer = null
+    if (!mjpegStreamUrl.value) return
+    refreshRawImage(true)
+    bumpMjpegReconnect()
+  }, MJPEG_RETRY_DELAY_MS)
+}
+
 /** 启动定时器（幂等，重复调用无副作用） */
 function startAutoRefresh() {
   if (!deviceRefreshTimer) {
@@ -651,6 +788,9 @@ function startAutoRefresh() {
   }
   if (!aiRefreshTimer) {
     aiRefreshTimer = setInterval(fetchAiData, AI_REFRESH_INTERVAL)
+  }
+  if (!camInfoTimer) {
+    camInfoTimer = setInterval(refreshCamStreamInfo, CAM_INFO_INTERVAL)
   }
 }
 
@@ -664,6 +804,11 @@ function stopAutoRefresh() {
     clearInterval(aiRefreshTimer)
     aiRefreshTimer = null
   }
+  if (camInfoTimer) {
+    clearInterval(camInfoTimer)
+    camInfoTimer = null
+  }
+  clearMjpegRetryTimer()
 }
 
 /**
@@ -683,18 +828,60 @@ function onAutoRefreshChange(val) {
 // 生命周期
 // ───────────────────────────────────────────
 
+function onVisibilityForMjpeg() {
+  if (document.visibilityState === 'visible' && mjpegStreamUrl.value && !mjpegStreamReady.value) {
+    scheduleMjpegReconnect()
+  }
+}
+
+watch(mjpegStreamUrl, (next, prev) => {
+  if (next === prev) return
+  resetMjpegState()
+  if (next) {
+    refreshRawImage(true)
+    bumpMjpegReconnect()
+    return
+  }
+  refreshRawImage(true)
+})
+
+let notificationInstance = null
+watch(() => BINS.some(b => properties.value[b.key].full), (isFull) => {
+  if (isFull) {
+    document.body.classList.add('global-alert-active')
+    if (!notificationInstance) {
+      notificationInstance = ElNotification({
+        title: '系统紧急警报',
+        message: '检测到设备部分回收仓已达到满溢阈值，请立即清运以恢复运转！',
+        type: 'error',
+        duration: 0,
+        showClose: false
+      })
+    }
+  } else {
+    document.body.classList.remove('global-alert-active')
+    if (notificationInstance) {
+      notificationInstance.close()
+      notificationInstance = null
+    }
+  }
+}, { immediate: true })
+
 onMounted(async () => {
-  // rawImageUrl 无论 AI 后端是否在线都先赋值，避免后端离线时左侧完全空白
+  document.addEventListener('visibilitychange', onVisibilityForMjpeg)
+  // 无 MJPEG 时左侧依赖 latest-raw-image；先拉流地址再补帧
   refreshRawImage()
+  await refreshCamStreamInfo()
 
-  const [configResult] = await Promise.allSettled([fetchConfig()])
-
-  // 无本地缓存时用语义服务默认配置；已有缓存则保留刷新前的设置/设备快照
-  if (configResult.status === 'fulfilled' && !dashboardSnapshot) {
-    settingsForm.value.confThreshold = configResult.value.conf_threshold ?? 0.70
-    settingsForm.value.overflowThresholdG = configResult.value.overflow_threshold_g ?? 1000
-  } else if (configResult.status === 'rejected') {
-    console.error('[Dashboard] init fetchConfig error:', configResult.reason)
+  // 无本地缓存时用推理服务默认配置；已有缓存则保留刷新前的快照
+  try {
+    const cfg = await fetchConfig()
+    if (!dashboardSnapshot) {
+      settingsForm.value.confThreshold = cfg.conf_threshold ?? 0.70
+      settingsForm.value.overflowThresholdG = cfg.overflow_threshold_g ?? 1000
+    }
+  } catch (err) {
+    console.error('[Dashboard] init fetchConfig error:', err)
   }
 
   fetchAll()
@@ -702,12 +889,33 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityForMjpeg)
   // 组件销毁时清除定时器，防止内存泄漏与无效请求
   stopAutoRefresh()
 })
 
 function onRawImageError() {
-  refreshRawImage()
+  refreshRawImage(true)
+}
+
+function onStreamImageLoad() {
+  mjpegStreamReady.value = true
+  mjpegErrorStreak = 0
+  clearMjpegRetryTimer()
+}
+
+/** MJPEG 加载失败（相机离线、跨网不可达等）时先软重连，多次失败后再回退为轮询帧 */
+function onStreamImageError() {
+  mjpegStreamReady.value = false
+  refreshRawImage(true)
+  mjpegErrorStreak++
+  if (mjpegErrorStreak < MJPEG_ERROR_RETRY_LIMIT) {
+    scheduleMjpegReconnect()
+    return
+  }
+  camInfoEmptyStreak = 0
+  camInfoErrorStreak = 0
+  mjpegStreamUrl.value = ''
 }
 
 function onAnnotatedImageError() {
@@ -775,49 +983,53 @@ function openSettings() {
 async function saveSettings() {
   settingsSaving.value = true
   settingsErrorMsg.value = ''
+  settingsSyncMsg.value = ''
 
   const overflowG = settingsForm.value.overflowThresholdG
-  const aiConf = parseFloat(parseFloat(settingsForm.value.confThreshold).toFixed(2))
+  const aiConf = parseFloat(Number(settingsForm.value.confThreshold).toFixed(2))
 
   try {
     // Step 1: 写入推理服务持久化配置
-    const payload = { conf_threshold: aiConf, overflow_threshold_g: overflowG }
-    console.log('[Settings] updateConfig payload:', payload)
-    await updateConfig(payload)
-    console.log('[Settings] updateConfig ok')
+    settingsSyncMsg.value = '正在写入推理服务配置…'
+    await updateConfig({ conf_threshold: aiConf, overflow_threshold_g: overflowG })
   } catch (err) {
     console.error('[Settings] updateConfig error:', err?.response?.data ?? err?.message)
     const detail = err?.response?.data?.detail ?? err?.message ?? '请检查推理服务是否正常运行'
     const msg = `保存失败（推理服务）：${detail}`
     settingsErrorMsg.value = msg
+    settingsSyncMsg.value = ''
     ElMessage.error(msg)
     settingsSaving.value = false
     return
   }
 
   // Step 2: 独立下发满溢阈值（必须成功才算完整同步）
+  settingsSyncMsg.value = '正在同步满溢阈值到设备…'
   let overflowOk = false
   try {
     await setOverflowThresholdOnDevice(overflowG)
-    console.log('[Settings] setOverflowThresholdOnDevice ok')
     overflowOk = true
   } catch (err) {
     console.warn('[Settings] setOverflowThresholdOnDevice failed:', err?.message)
   }
 
   // Step 3: 独立下发置信度阈值（失败仅警告，可能是物模型未更新导致）
+  settingsSyncMsg.value = '正在同步置信度阈值到设备…'
   let aiConfOk = false
   try {
     await setAiConfThresholdOnDevice(aiConf)
-    console.log('[Settings] setAiConfThresholdOnDevice ok')
     aiConfOk = true
   } catch (err) {
     console.warn('[Settings] setAiConfThresholdOnDevice failed:', err?.message)
   }
 
+  settingsSyncMsg.value = ''
   settingsVisible.value = false
   settingsSaving.value = false
   saveDashboardCache()
+
+  // 保存完成后立即强制全量刷新，让页面显示最新状态，不等下一个轮询周期
+  fetchAll(true)
 
   if (overflowOk && aiConfOk) {
     ElMessage.success('设置已保存并同步到推理服务与设备')
@@ -830,6 +1042,22 @@ async function saveSettings() {
   }
 }
 </script>
+
+<style>
+/* 全局边缘红光闪烁报警，由 body class 激活 */
+.global-alert-active {
+  animation: danger-pulse-border 2s infinite ease-in-out;
+  pointer-events: none;
+  position: fixed; 
+  inset: 0; 
+  z-index: 9999;
+}
+
+@keyframes danger-pulse-border {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: inset 0 0 24px 6px rgba(239, 68, 68, 0.7); }
+}
+</style>
 
 <style scoped>
 /* ===== 根容器（简洁平面背景）===== */
@@ -996,8 +1224,21 @@ async function saveSettings() {
   --el-button-hover-text-color: var(--color-accent);
 }
 
-.status-tag {
-  font-size: 13px;
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.status-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 /* 自动刷新开关主题色 */
@@ -1006,9 +1247,49 @@ async function saveSettings() {
 }
 
 /* ===== 满溢警告横幅 ===== */
+.full-alert-wrapper {
+  margin: 0 0 16px;
+}
+
 .full-alert {
-  margin: 0 0 10px;
-  border-radius: 10px;
+  border-radius: 12px;
+  border: none;
+}
+
+.full-alert :deep(.el-alert__title) {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.full-alert :deep(.el-alert__icon) {
+  font-size: 20px;
+  width: 20px;
+}
+
+.full-alert-desc {
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+.ds-pulse-danger {
+  animation: pulse-danger 2s infinite ease-out;
+}
+
+@keyframes pulse-danger {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+[data-theme='dark'] .ds-pulse-danger {
+  animation: pulse-danger-dark 2s infinite ease-out;
+}
+
+@keyframes pulse-danger-dark {
+  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(248, 113, 113, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
 }
 
 /* ===== 分区标题 ===== */
@@ -1058,9 +1339,10 @@ async function saveSettings() {
 .bin-card {
   border-radius: 16px;
   overflow: hidden;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  transition: transform 0.22s ease-out, box-shadow 0.22s ease-out;
   margin-bottom: 20px;
   border: 1px solid var(--color-border);
+  position: relative;
 }
 
 .bin-card:hover,
@@ -1082,6 +1364,11 @@ async function saveSettings() {
 .card-full {
   border: 2px solid var(--card-full-border) !important;
   background: var(--card-full-bg) !important;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+}
+
+[data-theme='dark'] .card-full {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
 }
 
 /* 警告（≥80%）：橙色边框 + 主题适配背景 */
@@ -1094,6 +1381,83 @@ async function saveSettings() {
 .card-normal {
   border: 2px solid var(--card-normal-border) !important;
   background: var(--card-normal-bg) !important;
+}
+
+/* 绝对定位徽标 */
+.bin-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 10;
+  letter-spacing: 0.5px;
+}
+
+.badge-icon {
+  font-size: 14px;
+}
+
+.badge-warning {
+  background: var(--color-warning);
+  color: #fff;
+}
+
+.bin-overlay-full {
+  position: absolute;
+  inset: 0;
+  background: rgba(220, 38, 38, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  animation: pulse-danger-overlay 2s infinite ease-out;
+}
+
+.overlay-content {
+  text-align: center;
+}
+
+.overlay-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+  animation: shake 0.5s infinite ease-in-out alternate;
+}
+
+.overlay-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.overlay-subtitle {
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+@keyframes pulse-danger-overlay {
+  0% { background: rgba(239, 68, 68, 0.8); }
+  50% { background: rgba(239, 68, 68, 0.95); }
+  100% { background: rgba(239, 68, 68, 0.8); }
+}
+
+@keyframes shake {
+  0% { transform: rotate(-5deg); }
+  100% { transform: rotate(5deg); }
+}
+
+[data-theme='dark'] .bin-overlay-full {
+  background: rgba(239, 68, 68, 0.85);
 }
 
 /* 卡片头部 */
@@ -1190,12 +1554,6 @@ async function saveSettings() {
   margin-bottom: 8px;
 }
 
-.progress-label {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  text-align: right;
-}
-
 /* ===== AI 卡片 ===== */
 .ai-card {
   border-radius: 16px;
@@ -1270,6 +1628,11 @@ async function saveSettings() {
   background: var(--color-text-disabled);
 }
 
+.connecting-dot {
+  background: var(--el-color-warning);
+  animation: pulse 1s infinite;
+}
+
 .result-dot {
   background: var(--color-accent);
 }
@@ -1303,6 +1666,29 @@ async function saveSettings() {
   min-height: 240px;
   object-fit: contain;
   background: var(--color-surface-muted);
+}
+
+/* 左侧 MJPEG 叠在 latest-raw 之上，断流时底层仍可能看到最近一帧 */
+.ai-preview-stack {
+  position: relative;
+  min-height: 240px;
+}
+
+.ai-preview-stack .ai-image-stream-fallback {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  object-fit: contain;
+  z-index: 0;
+}
+
+.ai-preview-stack .ai-image-mjpeg {
+  position: relative;
+  z-index: 1;
+  background: transparent;
 }
 
 .ai-image-placeholder {
@@ -1360,12 +1746,66 @@ async function saveSettings() {
   word-break: break-word;
 }
 
+.text-danger {
+  color: var(--color-danger) !important;
+}
+
 .ai-metric-value.text-danger {
   color: var(--color-danger);
 }
 
 .ai-metric-value.text-success {
   color: var(--color-success);
+}
+
+.ai-metric-value.text-danger-strong {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.ai-metric-value.text-success-bold {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.metric-offline {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-surface-muted),
+    var(--color-surface-muted) 10px,
+    rgba(239, 68, 68, 0.03) 10px,
+    rgba(239, 68, 68, 0.03) 20px
+  );
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+[data-theme='dark'] .metric-offline {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-surface-muted),
+    var(--color-surface-muted) 10px,
+    rgba(239, 68, 68, 0.05) 10px,
+    rgba(239, 68, 68, 0.05) 20px
+  );
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.ds-pop {
+  animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.ds-pulse-text {
+  animation: pulse-text 2s infinite ease-out;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ===== 错误提示 ===== */

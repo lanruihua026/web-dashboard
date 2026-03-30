@@ -1,11 +1,4 @@
-/**
- * oneNet.js — OneNET AIoT 平台 API 封装
- *
- * 职责：
- * 1. 生成符合 OneNET 规范的鉴权 Token（HMAC-SHA256，与 ESP32 端算法一致）
- * 2. 封装 Axios HTTP 客户端，统一注入鉴权头、打印调试日志
- * 3. 提供 fetchDeviceProperties() 查询物模型属性，并通过官方设备详情接口获取在线状态
- */
+// OneNET AIoT 平台 API 封装：Token 生成、属性查询、阈值下发
 
 import axios from 'axios'
 
@@ -18,33 +11,8 @@ const ONENET_BASE64_KEY = 'T0R5ejYyM1JrT2VuczBkZllINmZuazRicEMxc29xcnk=' // Base
 // ===== OneNET Token 生成 =====
 
 /**
- * 对 Token 各字段的值进行 URL 编码。
- * OneNET 规范要求 version / res / et / method / sign 的值均需编码，
- * 与 ESP32 端 onenetToken.cpp 中的 urlEncodeValue() 逻辑一致。
- *
- * @param {string} value - 待编码的字段值
- * @returns {string} URL 编码后的字符串
- */
-function urlEncodeValue(value) {
-  return encodeURIComponent(value)
-}
-
-/**
- * 生成 OneNET 鉴权 Token。
- *
- * 算法流程（与 esp32s3/src/onenetToken.cpp 完全一致）：
- *   1. Base64 解码密钥 → 原始字节
- *   2. 拼接待签名字符串：et + '\n' + method + '\n' + resource + '\n' + version
- *   3. 使用 Web Crypto API 对待签名字符串做 HMAC-SHA256
- *   4. 对 HMAC 结果做 Base64 编码，得到 sign
- *   5. 将各字段值 URL 编码后拼装为最终 Token 字符串
- *
- * @param {string} base64Key      - Base64 编码的设备密钥（来自平台）
- * @param {string} resource       - 资源串，格式：products/{pid}/devices/{dn}
- * @param {number} expirationTime - Token 过期时间（Unix 秒级时间戳）
- * @param {string} method         - 签名算法，固定 "sha256"
- * @param {string} version        - Token 版本，固定 "2018-10-31"
- * @returns {Promise<string>}      - 组装完成的 Token 字符串
+ * 生成 OneNET 鉴权 Token（HMAC-SHA256，与 ESP32 端 onenetToken.cpp 算法一致）。
+ * 流程：Base64 解码密钥 → 拼接待签名串 → Web Crypto HMAC-SHA256 → Base64 → URL 编码拼装。
  */
 export async function generateOneNetToken(
   base64Key,
@@ -53,43 +21,33 @@ export async function generateOneNetToken(
   method = 'sha256',
   version = '2018-10-31'
 ) {
-  // 步骤 1：Base64 解码密钥，得到原始二进制密钥字节
   const keyBytes = Uint8Array.from(atob(base64Key), (c) => c.charCodeAt(0))
-
-  // 步骤 2：按固定顺序拼接待签名字符串（et → method → resource → version，换行分隔）
   const et = String(expirationTime)
   const stringForSignature = `${et}\n${method}\n${resource}\n${version}`
 
-  // 步骤 3：使用 Web Crypto API 导入 HMAC-SHA256 密钥（浏览器原生，无需第三方库）
   const cryptoKey = await crypto.subtle.importKey(
-    'raw',                          // 密钥格式：原始字节
-    keyBytes,                       // 解码后的密钥
-    { name: 'HMAC', hash: 'SHA-256' }, // 算法：HMAC-SHA256
-    false,                          // 不允许导出密钥
-    ['sign']                        // 仅用于签名操作
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
   )
 
-  // 步骤 4：计算 HMAC-SHA256 签名
-  const encoder = new TextEncoder()
   const signatureBuffer = await crypto.subtle.sign(
     'HMAC',
     cryptoKey,
-    encoder.encode(stringForSignature) // 将字符串编码为 UTF-8 字节
+    new TextEncoder().encode(stringForSignature)
   )
 
-  // 步骤 5：将签名结果（ArrayBuffer）转为 Base64 字符串
-  const signBytes = new Uint8Array(signatureBuffer)
-  const signBase64 = btoa(String.fromCharCode(...signBytes))
+  const signBase64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
 
-  // 步骤 6：按 OneNET 规范拼装 Token，每个字段值均需 URL 编码
-  const token =
-    `version=${urlEncodeValue(version)}` +
-    `&res=${urlEncodeValue(resource)}` +
-    `&et=${urlEncodeValue(et)}` +
-    `&method=${urlEncodeValue(method)}` +
-    `&sign=${urlEncodeValue(signBase64)}`
-
-  return token
+  return (
+    `version=${encodeURIComponent(version)}` +
+    `&res=${encodeURIComponent(resource)}` +
+    `&et=${encodeURIComponent(et)}` +
+    `&method=${encodeURIComponent(method)}` +
+    `&sign=${encodeURIComponent(signBase64)}`
+  )
 }
 
 /**
@@ -200,32 +158,20 @@ export async function fetchDeviceProperties() {
 
   const findItem = (id) => list.find((item) => item.identifier === id)
 
-  // 解析单个仓格的三个属性，返回 { weight, percent, full, _time }
-  const parseBin = (prefix) => {
-    const wItem = findItem(`${prefix}_weight`)
-    const pItem = findItem(`${prefix}_percent`)
-    const fItem = findItem(`${prefix}_full`)
-    return {
-      weight: Number(wItem?.value ?? 0),
-      percent: Number(pItem?.value ?? 0),
-      full: fItem?.value === 'true',
-      _time: wItem?.time ?? pItem?.time ?? fItem?.time ?? null
-    }
-  }
+  // 解析单个仓格的三个属性
+  const parseBin = (prefix) => ({
+    weight: Number(findItem(`${prefix}_weight`)?.value ?? 0),
+    percent: Number(findItem(`${prefix}_percent`)?.value ?? 0),
+    full: findItem(`${prefix}_full`)?.value === 'true',
+  })
 
-  const phone = parseBin('phone')
-  const mouse = parseBin('mouse')
+  const phone   = parseBin('phone')
+  const mouse   = parseBin('mouse')
   const battery = parseBin('battery')
 
   // 官方设备状态：0-离线，1-在线，2-未激活
-  const deviceStatus = detailData?.data?.status
-  const online = deviceStatus === 1
+  const online = detailData?.data?.status === 1
   const lastReportTime = detailData?.data?.last_time ?? null
-
-  // 删除内部辅助字段，不暴露给页面
-  delete phone._time
-  delete mouse._time
-  delete battery._time
 
   const ot = findItem('overflow_threshold_g')
   const ai = findItem('ai_conf_threshold')
@@ -250,80 +196,26 @@ export async function fetchDeviceProperties() {
   return result
 }
 
-/**
- * REST POST /thingmodel/set-device-property 与 MQTT OneJSON 不同：
- * params 为「扁平」结构，标识符直接对应 JSON 原生类型（见官方示例：humidity 为 number、temperature 为 number）。
- * 不要使用 { identifier: { value: x } }，否则平台按错误结构解析会报 int32/float type error。
- *
- * 注意：code===0 只表示平台已受理下发；控制台「设备最新数据」依赖物模型 property/post 上报。
- * 设备端须同时解析扁平与标准 params.xxx.value 下行，否则会静默忽略阈值，云端查询也一直显示旧上报值。
- */
-function oneNetInt32Param(v) {
-  const n = Math.round(Number(v))
-  if (!Number.isFinite(n)) throw new Error('invalid int32 threshold')
-  return n
+// 注意：params 为扁平结构（直接用 JSON number），不要用 { identifier: { value: x } }。
+
+/** 向设备下发单个属性（内部公共实现） */
+async function _setDeviceProperty(params) {
+  const headers = await authHeader()
+  const body = { product_id: ONENET_PRODUCT_ID, device_name: ONENET_DEVICE_NAME, params }
+  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
+  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
 }
 
-/** 浮点物模型：传 JSON number，保留两位小数避免浮点噪声 */
-function oneNetFloatParam(v) {
-  const n = parseFloat(v)
-  if (!Number.isFinite(n)) throw new Error('invalid float threshold')
-  return parseFloat(n.toFixed(2))
-}
-
-/**
- * 向设备下发满溢重量阈值（独立接口，避免 ai_conf_threshold 失败时也阻断此项下发）。
- * @param {number} thresholdG - 满溢重量阈值（克），有效范围 100~5000
- */
+/** 向设备下发满溢重量阈值（克，整数） */
 export async function setOverflowThresholdOnDevice(thresholdG) {
-  const headers = await authHeader()
-  const body = {
-    product_id: ONENET_PRODUCT_ID,
-    device_name: ONENET_DEVICE_NAME,
-    params: {
-      overflow_threshold_g: oneNetInt32Param(thresholdG)
-    }
-  }
-  console.log('[OneNET] setOverflowThresholdOnDevice body:', body)
-  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
-  console.log('[OneNET] setOverflowThresholdOnDevice response:', data)
-  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
+  const n = Math.round(Number(thresholdG))
+  if (!Number.isFinite(n)) throw new Error('invalid overflow threshold')
+  await _setDeviceProperty({ overflow_threshold_g: n })
 }
 
-/**
- * 向设备下发 AI 识别置信度阈值（独立接口）。
- * @param {number} aiConf - 置信度阈值（0~1）
- */
+/** 向设备下发 AI 识别置信度阈值（0~1，保留两位小数） */
 export async function setAiConfThresholdOnDevice(aiConf) {
-  const headers = await authHeader()
-  const body = {
-    product_id: ONENET_PRODUCT_ID,
-    device_name: ONENET_DEVICE_NAME,
-    params: {
-      ai_conf_threshold: oneNetFloatParam(aiConf)
-    }
-  }
-  console.log('[OneNET] setAiConfThresholdOnDevice body:', body)
-  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
-  console.log('[OneNET] setAiConfThresholdOnDevice response:', data)
-  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
-}
-
-/**
- * @deprecated 使用 setOverflowThresholdOnDevice / setAiConfThresholdOnDevice 代替。
- */
-export async function setDeviceThresholds(thresholdG, aiConf) {
-  const headers = await authHeader()
-  const body = {
-    product_id: ONENET_PRODUCT_ID,
-    device_name: ONENET_DEVICE_NAME,
-    params: {
-      overflow_threshold_g: oneNetInt32Param(thresholdG),
-      ai_conf_threshold: oneNetFloatParam(aiConf)
-    }
-  }
-  console.log('[OneNET] setDeviceThresholds request body:', body)
-  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
-  console.log('[OneNET] setDeviceThresholds response:', data)
-  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
+  const n = parseFloat(Number(aiConf).toFixed(2))
+  if (!Number.isFinite(n)) throw new Error('invalid ai_conf threshold')
+  await _setDeviceProperty({ ai_conf_threshold: n })
 }

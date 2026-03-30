@@ -71,7 +71,7 @@
               </span>
               <span class="stat-unit">g</span>
             </div>
-            <div class="stat-row">
+            <div class="stat-grid-compact">
               <div class="stat-item">
                 <span class="stat-label">最大</span>
                 <span class="stat-val">{{ stats[bin.key].max }} g</span>
@@ -85,13 +85,6 @@
                 <span class="stat-val">{{ stats[bin.key].avg }} g</span>
               </div>
             </div>
-            <!-- 简易迷你进度条 -->
-            <div class="mini-bar-bg">
-              <div
-                class="mini-bar-fill"
-                :style="{ width: Math.min((latestData[bin.key] ?? 0) / 10, 100) + '%', background: bin.color }"
-              ></div>
-            </div>
           </div>
         </div>
 
@@ -104,13 +97,36 @@
           <div ref="trendChartEl" class="chart-container"></div>
         </div>
 
-        <!-- ===== 次图：当前对比柱状图 ===== -->
-        <div class="chart-card">
-          <div class="chart-title">
-            <span>当前重量对比</span>
-            <span class="chart-subtitle">各仓格实时重量与容量占比</span>
+        <!-- ===== 底部网格：柱状图与数据表格 ===== -->
+        <div class="bottom-grid">
+          <!-- 次图：当前对比柱状图 -->
+          <div class="chart-card mb-0">
+            <div class="chart-title">
+              <span>当前重量对比</span>
+              <span class="chart-subtitle">各仓格实时重量与容量占比</span>
+            </div>
+            <div ref="barChartEl" class="chart-container bar-chart-container"></div>
           </div>
-          <div ref="barChartEl" class="chart-container bar-chart-container"></div>
+          
+          <!-- 历史明细数据表格 -->
+          <div class="chart-card mb-0 table-card">
+            <div class="chart-title">
+              <span>历史明细数据</span>
+              <span class="chart-subtitle">最近 {{ selectedMinutes || '全部' }} 分钟采集记录</span>
+            </div>
+            <div class="table-container">
+              <el-table :data="[...filteredData].reverse()" height="100%" stripe border size="small">
+                <el-table-column prop="time" label="采集时间" width="160" align="center">
+                  <template #default="{ row }">
+                    {{ new Date(row.time).toLocaleTimeString('zh-CN', { hour12: false }) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="phone" label="手机仓 (g)" align="right" />
+                <el-table-column prop="mouse" label="配件仓 (g)" align="right" />
+                <el-table-column prop="battery" label="电池仓 (g)" align="right" />
+              </el-table>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -298,8 +314,8 @@ function buildTrendOption(data) {
       markLine: {
         silent: true,
         data: [{ yAxis: 1000, name: '满仓线' }],
-        lineStyle: { color: '#f56c6c', type: 'dashed', width: 1.5 },
-        label: { formatter: '满仓 1000g', color: '#f56c6c', fontSize: 11, position: 'end' }
+        lineStyle: { color: '#ef4444', type: 'dashed', width: 1.5 },
+        label: { formatter: '满仓 1000g', color: '#ef4444', fontSize: 11, position: 'end' }
       }
     },
     series: BINS.map((bin) => ({
@@ -388,8 +404,8 @@ function buildBarOption(data) {
         markLine: {
           silent: true,
           data: [{ yAxis: 1000 }],
-          lineStyle: { color: '#f56c6c', type: 'dashed', width: 1.5 },
-          label: { formatter: '满仓', color: '#f56c6c', fontSize: 11 }
+          lineStyle: { color: '#ef4444', type: 'dashed', width: 1.5 },
+          label: { formatter: '满仓', color: '#ef4444', fontSize: 11 }
         }
       }
     ]
@@ -745,24 +761,18 @@ async function onClear() {
   font-weight: 500;
 }
 
-.stat-row {
-  display: flex;
-  gap: 0;
-  margin-bottom: 14px;
+.stat-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  overflow: hidden;
+  padding: 8px;
 }
 
 .stat-item {
-  flex: 1;
   text-align: center;
-  padding: 8px 6px;
-  background: var(--color-surface-muted);
-}
-
-.stat-item:not(:last-child) {
-  border-right: 1px solid var(--color-border);
 }
 
 .stat-label {
@@ -779,21 +789,6 @@ async function onClear() {
   font-weight: 600;
   color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
-}
-
-/* 迷你进度条 */
-.mini-bar-bg {
-  height: 4px;
-  background: var(--color-border);
-  border-radius: 99px;
-  overflow: hidden;
-}
-
-.mini-bar-fill {
-  height: 100%;
-  border-radius: 99px;
-  transition: width 0.5s ease;
-  opacity: 0.85;
 }
 
 /* ===== 图表卡片 ===== */
@@ -831,8 +826,31 @@ async function onClear() {
   height: 380px;
 }
 
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.mb-0 {
+  margin-bottom: 0 !important;
+}
+
 .bar-chart-container {
   height: 280px;
+}
+
+.table-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-container {
+  flex: 1;
+  height: 280px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
 }
 
 /* ===== 页脚 ===== */
@@ -853,6 +871,13 @@ async function onClear() {
 
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
+  .bottom-grid {
+    grid-template-columns: 1fr;
+  }
+  .mb-0 {
+    margin-bottom: 20px !important;
+  }
+  
   .stats-grid {
     grid-template-columns: 1fr;
   }
