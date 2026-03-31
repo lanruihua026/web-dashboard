@@ -2,40 +2,19 @@
   <div class="history-page">
 
     <!-- ===== 顶部导航栏 ===== -->
-    <header class="header">
-      <div class="header-left">
+    <AppHeader title="历史趋势" tagline="重量曲线 · 三仓对比" :icon="TrendCharts">
+      <template #left-extra>
         <el-button :icon="ArrowLeft" @click="router.push('/')" class="back-btn" round>
           返回仪表盘
         </el-button>
-        <div class="brand-block">
-          <span class="brand-icon-wrap" aria-hidden="true">
-            <el-icon :size="22"><TrendCharts /></el-icon>
-          </span>
-          <div class="brand-text">
-            <span class="title">历史趋势</span>
-            <span class="title-tagline">重量曲线 · 三仓对比</span>
-          </div>
-        </div>
-      </div>
-      <div class="header-right">
+      </template>
+      <template #right>
         <span class="data-count">共 {{ filteredData.length }} 个数据点</span>
-        <el-button class="theme-toggle-btn" :icon="isDarkMode ? Sunny : Moon" @click="toggleTheme" round>
-          {{ isDarkMode ? '明亮模式' : '黑暗模式' }}
-        </el-button>
-        <div class="time-filters">
-          <button
-            v-for="opt in TIME_OPTIONS"
-            :key="opt.value"
-            class="filter-btn"
-            :class="{ active: selectedMinutes === opt.value }"
-            @click="selectedMinutes = opt.value"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
+        <ThemeToggle />
+        <TimeFilterGroup :options="TIME_OPTIONS" v-model="selectedMinutes" />
         <el-button size="small" @click="onClear" plain class="clear-btn">清空记录</el-button>
-      </div>
-    </header>
+      </template>
+    </AppHeader>
 
     <main class="content page-main">
 
@@ -55,37 +34,15 @@
       <template v-else>
         <!-- ===== 统计卡片区 ===== -->
         <div class="stats-grid">
-          <div
-            v-for="bin in BINS"
+          <StatCard
+            v-for="(bin, idx) in BINS"
             :key="bin.key"
-            class="stat-card"
-            :style="{ '--accent': bin.color, '--accent-dim': bin.colorDim }"
-          >
-            <span class="stat-icon-wrap">
-              <el-icon :size="22" class="stat-icon-el"><component :is="BIN_ICONS[bin.key]" /></el-icon>
-            </span>
-            <div class="stat-name">{{ bin.name }}</div>
-            <div class="stat-current">
-              <span class="stat-num" :style="{ color: bin.color }">
-                {{ latestData[bin.key] ?? '--' }}
-              </span>
-              <span class="stat-unit">g</span>
-            </div>
-            <div class="stat-grid-compact">
-              <div class="stat-item">
-                <span class="stat-label">最大</span>
-                <span class="stat-val">{{ stats[bin.key].max }} g</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">最小</span>
-                <span class="stat-val">{{ stats[bin.key].min }} g</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">均值</span>
-                <span class="stat-val">{{ stats[bin.key].avg }} g</span>
-              </div>
-            </div>
-          </div>
+            :bin="bin"
+            :binIcon="BIN_ICONS[bin.key]"
+            :currentValue="latestData[bin.key] ?? 0"
+            :stats="stats[bin.key]"
+            :index="idx"
+          />
         </div>
 
         <!-- ===== 主图：重量趋势折线图 ===== -->
@@ -107,7 +64,7 @@
             </div>
             <div ref="barChartEl" class="chart-container bar-chart-container"></div>
           </div>
-          
+
           <!-- 历史明细数据表格 -->
           <div class="chart-card mb-0 table-card">
             <div class="chart-title">
@@ -133,11 +90,7 @@
     </main>
 
     <!-- ===== 页脚 ===== -->
-    <footer class="footer">
-      <div class="footer-inner page-shell">
-        数据采集自仪表盘轮询 · localStorage · 最多保留最近 30 分钟
-      </div>
-    </footer>
+    <AppFooter text="数据采集自仪表盘轮询 · localStorage · 最多保留最近 30 分钟" />
   </div>
 </template>
 
@@ -147,10 +100,27 @@ import {
   Cellphone,
   Connection,
   Lightning,
-  Moon,
-  Sunny,
   TrendCharts
 } from '@element-plus/icons-vue'
+import * as echarts from 'echarts'
+import { ElMessageBox } from 'element-plus'
+
+import AppHeader from '../components/AppHeader.vue'
+import ThemeToggle from '../components/ThemeToggle.vue'
+import StatCard from '../components/StatCard.vue'
+import TimeFilterGroup from '../components/TimeFilterGroup.vue'
+import AppFooter from '../components/AppFooter.vue'
+
+import { useChartTheme, buildTrendOption, buildBarOption, BINS_CHART } from '../composables/useChartTheme'
+import { historyData, getFilteredHistory, clearHistory } from '../store/historyStore'
+
+const router = useRouter()
+const isDarkMode = inject('isDarkMode', computed(() => false))
+
+// ───────────────────────────────────────────
+// 仓位配置
+// ───────────────────────────────────────────
+const BINS = BINS_CHART
 
 const BIN_ICONS = {
   phone: Cellphone,
@@ -158,62 +128,17 @@ const BIN_ICONS = {
   battery: Lightning
 }
 
-/** 将 #RRGGBB 转为 rgba（供 ECharts 渐变使用） */
-function rgbaFromHex(hex, alpha) {
-  const h = hex.replace('#', '')
-  const r = parseInt(h.slice(0, 2), 16)
-  const g = parseInt(h.slice(2, 4), 16)
-  const b = parseInt(h.slice(4, 6), 16)
-  return `rgba(${r},${g},${b},${alpha})`
-}
-import * as echarts from 'echarts'
-import { ElMessageBox } from 'element-plus'
-import { historyData, getFilteredHistory, clearHistory } from '../store/historyStore'
-
-const router = useRouter()
-const isDarkMode = inject('isDarkMode', computed(() => false))
-const toggleTheme = inject('toggleTheme', () => {})
-
-const chartTheme = computed(() => {
-  if (isDarkMode.value) {
-    return {
-      tooltipBg: 'rgba(17,27,47,0.95)',
-      tooltipBorder: 'rgba(255,255,255,0.16)',
-      tooltipText: '#e5ecf6',
-      secondaryText: '#b6c2d3',
-      mutedText: '#8da0b8',
-      axisLine: 'rgba(255,255,255,0.14)',
-      splitLine: 'rgba(255,255,255,0.08)'
-    }
-  }
-
-  return {
-    tooltipBg: 'rgba(255,255,255,0.95)',
-    tooltipBorder: 'rgba(31,42,55,0.14)',
-    tooltipText: '#1f2a37',
-    secondaryText: '#4b5563',
-    mutedText: '#7b8794',
-    axisLine: 'rgba(31,42,55,0.16)',
-    splitLine: 'rgba(31,42,55,0.08)'
-  }
-})
-
-// ───────────────────────────────────────────
-// 仓位配置
-// ───────────────────────────────────────────
-/* 与全局设计系统一致：主蓝 / 辅蓝 / 琥珀强调 */
-const BINS = [
-  { key: 'phone', name: '手机仓', color: '#1e40af' },
-  { key: 'mouse', name: '数码配件仓', color: '#3b82f6' },
-  { key: 'battery', name: '电池仓', color: '#d97706' }
-]
-
 const TIME_OPTIONS = [
   { label: '5 分钟',  value: 5 },
   { label: '15 分钟', value: 15 },
   { label: '30 分钟', value: 30 },
   { label: '全部',    value: null }
 ]
+
+// ───────────────────────────────────────────
+// 图表主题（来自 composable）
+// ───────────────────────────────────────────
+const chartTheme = useChartTheme(isDarkMode)
 
 // ───────────────────────────────────────────
 // 响应式状态
@@ -255,170 +180,13 @@ const barChartEl   = ref(null)
 let trendChart = null
 let barChart   = null
 
-/** 构建趋势折线图配置 */
-function buildTrendOption(data) {
-  const palette = chartTheme.value
-  const times = data.map((p) => p.time)
-
-  return {
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross', crossStyle: { color: palette.axisLine } },
-      backgroundColor: palette.tooltipBg,
-      borderColor: palette.tooltipBorder,
-      textStyle: { color: palette.tooltipText, fontSize: 13 },
-      formatter(params) {
-        const time = new Date(params[0].axisValue).toLocaleTimeString('zh-CN')
-        let html = `<div style="margin-bottom:6px;color:${palette.mutedText};font-size:12px">${time}</div>`
-        params.forEach((p) => {
-          html += `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
-            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color}"></span>
-            <span style="color:${palette.secondaryText}">${p.seriesName}</span>
-            <span style="font-weight:600;margin-left:auto;color:${palette.tooltipText}">${p.value[1]} g</span>
-          </div>`
-        })
-        return html
-      }
-    },
-    legend: {
-      top: 8,
-      right: 16,
-      textStyle: { color: palette.mutedText, fontSize: 13 },
-      icon: 'circle',
-      itemWidth: 10,
-      itemHeight: 10
-    },
-    grid: { top: 52, right: 24, bottom: 48, left: 60 },
-    xAxis: {
-      type: 'time',
-      axisLine: { lineStyle: { color: palette.axisLine } },
-      axisLabel: {
-        color: palette.mutedText,
-        fontSize: 12,
-        formatter(val) {
-          return new Date(val).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        }
-      },
-      splitLine: { show: false }
-    },
-    yAxis: {
-      type: 'value',
-      name: '重量 (g)',
-      nameTextStyle: { color: palette.mutedText, fontSize: 12 },
-      min: 0,
-      max: 1100,
-      axisLine: { show: false },
-      axisLabel: { color: palette.mutedText, fontSize: 12 },
-      splitLine: { lineStyle: { color: palette.splitLine } },
-      markLine: {
-        silent: true,
-        data: [{ yAxis: 1000, name: '满仓线' }],
-        lineStyle: { color: '#ef4444', type: 'dashed', width: 1.5 },
-        label: { formatter: '满仓 1000g', color: '#ef4444', fontSize: 11, position: 'end' }
-      }
-    },
-    series: BINS.map((bin) => ({
-      name: bin.name,
-      type: 'line',
-      smooth: true,
-      symbol: 'none',
-      data: data.map((p) => [p.time, p[bin.key]]),
-      lineStyle: { color: bin.color, width: 2.5 },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: rgbaFromHex(bin.color, 0.35) },
-          { offset: 1, color: rgbaFromHex(bin.color, 0.02) }
-        ])
-      },
-      emphasis: { focus: 'series' }
-    }))
-  }
-}
-
-/** 构建当前对比柱状图配置 */
-function buildBarOption(data) {
-  const palette = chartTheme.value
-  if (!data.length) return {}
-  const latest = data[data.length - 1]
-
-  return {
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: palette.tooltipBg,
-      borderColor: palette.tooltipBorder,
-      textStyle: { color: palette.tooltipText, fontSize: 13 },
-      formatter(params) {
-        const p = params[0]
-        const pct = ((p.value / 1000) * 100).toFixed(1)
-        return `<div style="display:flex;align-items:center;gap:8px">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${p.color}"></span>
-          <span style="color:${palette.secondaryText}">${p.name}</span>
-          <span style="font-weight:600;color:${palette.tooltipText}">${p.value} g (${pct}%)</span>
-        </div>`
-      }
-    },
-    grid: { top: 24, right: 32, bottom: 36, left: 60 },
-    xAxis: {
-      type: 'category',
-      data: BINS.map((b) => b.name),
-      axisLine: { lineStyle: { color: palette.axisLine } },
-      axisLabel: { color: palette.secondaryText, fontSize: 13 },
-      splitLine: { show: false }
-    },
-    yAxis: {
-      type: 'value',
-      name: '重量 (g)',
-      nameTextStyle: { color: palette.mutedText, fontSize: 12 },
-      min: 0,
-      max: 1100,
-      axisLine: { show: false },
-      axisLabel: { color: palette.mutedText, fontSize: 12 },
-      splitLine: { lineStyle: { color: palette.splitLine } }
-    },
-    series: [
-      {
-        type: 'bar',
-        data: BINS.map((bin) => ({
-          name: bin.name,
-          value: latest[bin.key] ?? 0,
-          itemStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: bin.color },
-              { offset: 1, color: rgbaFromHex(bin.color, 0.45) }
-            ]),
-            borderRadius: [6, 6, 0, 0]
-          }
-        })),
-        barWidth: '40%',
-        label: {
-          show: true,
-          position: 'top',
-          color: palette.secondaryText,
-          fontSize: 12,
-          formatter(p) {
-            return `${p.value} g\n${((p.value / 1000) * 100).toFixed(1)}%`
-          }
-        },
-        markLine: {
-          silent: true,
-          data: [{ yAxis: 1000 }],
-          lineStyle: { color: '#ef4444', type: 'dashed', width: 1.5 },
-          label: { formatter: '满仓', color: '#ef4444', fontSize: 11 }
-        }
-      }
-    ]
-  }
-}
-
 /** 更新两张图表 */
 function updateCharts() {
   const data = filteredData.value
   if (!data.length) return
 
-  if (trendChart) trendChart.setOption(buildTrendOption(data), { notMerge: false })
-  if (barChart)   barChart.setOption(buildBarOption(data),     { notMerge: false })
+  if (trendChart) trendChart.setOption(buildTrendOption(data, chartTheme.value), { notMerge: false })
+  if (barChart)   barChart.setOption(buildBarOption(data, chartTheme.value),     { notMerge: false })
 }
 
 // 监听过滤条件 + 数据变化
@@ -482,77 +250,13 @@ async function onClear() {
   transition: background 0.25s ease;
 }
 
-/* ===== 顶部导航栏（与仪表盘顶栏对齐）===== */
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 0 28px;
-  min-height: 64px;
-  background: var(--color-header-bg);
-  border-bottom: 2px solid var(--color-primary);
-  box-shadow: var(--color-shadow);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
+/* ===== 主内容区 ===== */
+.content {
+  padding-top: 24px;
+  padding-bottom: 8px;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.brand-block {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brand-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  color: var(--color-primary);
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-}
-
-[data-theme='dark'] .brand-icon-wrap {
-  color: var(--color-accent);
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.title-tagline {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-text-tertiary);
-  letter-spacing: 0.06em;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
+/* ===== 按钮样式 ===== */
 .back-btn {
   --el-button-bg-color: var(--color-surface-muted);
   --el-button-border-color: var(--color-border);
@@ -560,69 +264,6 @@ async function onClear() {
   --el-button-hover-bg-color: var(--color-accent-light);
   --el-button-hover-border-color: var(--color-accent);
   --el-button-hover-text-color: var(--color-accent);
-}
-
-.theme-toggle-btn {
-  --el-button-bg-color: var(--color-surface-muted);
-  --el-button-border-color: var(--color-border);
-  --el-button-text-color: var(--color-text-secondary);
-  --el-button-hover-bg-color: var(--color-accent-light);
-  --el-button-hover-border-color: var(--color-accent);
-  --el-button-hover-text-color: var(--color-accent);
-}
-
-.title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  letter-spacing: 0.01em;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.data-count {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
-}
-
-/* 时间筛选按钮组 */
-.time-filters {
-  display: flex;
-  gap: 4px;
-  background: var(--color-surface-muted);
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-}
-
-.filter-btn {
-  padding: 4px 13px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-tertiary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.18s, color 0.18s;
-  font-family: inherit;
-}
-
-.filter-btn:hover {
-  color: var(--color-text-secondary);
-  background: var(--color-surface);
-}
-
-.filter-btn.active {
-  background: var(--color-primary);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.28);
-}
-
-[data-theme='dark'] .filter-btn.active {
-  background: var(--el-color-primary);
-  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
 }
 
 .clear-btn {
@@ -634,10 +275,10 @@ async function onClear() {
   --el-button-hover-text-color: var(--color-danger);
 }
 
-/* ===== 主内容区（page-main 在全局 style.css）===== */
-.content {
-  padding-top: 24px;
-  padding-bottom: 8px;
+.data-count {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 /* ===== 空状态 ===== */
@@ -676,119 +317,6 @@ async function onClear() {
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
   margin-bottom: 20px;
-}
-
-.stat-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  padding: 20px 22px;
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-/* 左侧彩色竖线装饰 */
-.stat-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--accent);
-  border-radius: 16px 0 0 16px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.stat-card:hover {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-  transform: translateY(-2px);
-}
-
-.stat-card:hover::before {
-  opacity: 1;
-}
-
-.stat-icon-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  margin-bottom: 10px;
-  border-radius: 10px;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-}
-
-.stat-icon-el {
-  color: var(--color-primary);
-}
-
-[data-theme='dark'] .stat-icon-el {
-  color: var(--color-accent);
-}
-
-.stat-name {
-  font-size: 13px;
-  color: var(--color-text-tertiary);
-  margin-bottom: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-current {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  margin-bottom: 16px;
-}
-
-.stat-num {
-  font-size: 38px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-unit {
-  font-size: 14px;
-  color: var(--color-text-tertiary);
-  font-weight: 500;
-}
-
-.stat-grid-compact {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 8px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-label {
-  display: block;
-  font-size: 10px;
-  color: var(--color-text-tertiary);
-  margin-bottom: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-val {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ===== 图表卡片 ===== */
@@ -853,22 +381,6 @@ async function onClear() {
   border: 1px solid var(--color-border);
 }
 
-/* ===== 页脚 ===== */
-.footer {
-  text-align: center;
-  padding: 20px 0 28px;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  border-top: 1px solid var(--color-border);
-  margin-top: 8px;
-}
-
-.footer-inner {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
   .bottom-grid {
@@ -877,47 +389,18 @@ async function onClear() {
   .mb-0 {
     margin-bottom: 20px !important;
   }
-  
   .stats-grid {
     grid-template-columns: 1fr;
   }
-
-  .header {
-    height: auto;
-    padding: 12px 16px;
-  }
-
   .chart-container {
     height: 260px;
   }
-
   .content {
     padding-top: 16px;
-  }
-
-  .footer-inner {
-    padding: 0 16px;
-  }
-
-  .title-tagline {
-    display: none;
-  }
-
-  .title {
-    white-space: normal;
-    font-size: 15px;
   }
 }
 
 @media (max-width: 600px) {
-  .time-filters {
-    flex-wrap: wrap;
-  }
-
-  .title {
-    font-size: 16px;
-  }
-
   .bar-chart-container {
     height: 220px;
   }

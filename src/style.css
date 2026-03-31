@@ -24,6 +24,56 @@ body {
   --font-family-base: 'Fira Sans', 'Noto Sans SC', system-ui, sans-serif;
   --font-family-mono: 'Fira Code', 'Noto Sans SC', ui-monospace, monospace;
 
+  /* ── 间距系统（4px 基数）── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── 阴影层级 ── */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --shadow-xl: 0 16px 48px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(15, 23, 42, 0.08);
+
+  /* ── 圆角系统 ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+
+  /* ── 过渡令牌 ── */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 400ms ease;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* ── 字号系统 ── */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+  --font-size-2xl: 28px;
+
+  /* ── 玻璃拟态 ── */
+  --color-surface-glass: rgba(255, 255, 255, 0.72);
+  --color-surface-glass-border: rgba(255, 255, 255, 0.35);
+
+  /* ── 渐变令牌 ── */
+  --gradient-primary: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  --gradient-accent-line: linear-gradient(90deg, #1e40af, #3b82f6, #f59e0b, #3b82f6, #1e40af);
+  --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+
   /* 页面与表面 */
   --color-page-bg: #f8fafc;
   --color-surface: #ffffff;
@@ -78,6 +128,21 @@ body {
  * 暗色主题（深蓝底 + 蓝琥珀强调）
  * =================================================== */
 [data-theme='dark'] {
+  /* ── 暗色阴影 ── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.40), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.50), 0 4px 12px rgba(0, 0, 0, 0.35);
+
+  /* ── 暗色玻璃拟态 ── */
+  --color-surface-glass: rgba(17, 24, 39, 0.80);
+  --color-surface-glass-border: rgba(255, 255, 255, 0.08);
+
+  /* ── 暗色渐变 ── */
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  --gradient-accent-line: linear-gradient(90deg, #3b82f6, #60a5fa, #fbbf24, #60a5fa, #3b82f6);
+  --gradient-danger: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+
   --color-page-bg: #0b1120;
   --color-surface: #111827;
   --color-surface-muted: #1e293b;
@@ -136,7 +201,45 @@ body {
   font-family: var(--font-family-base);
   background: var(--color-page-bg);
   color: var(--color-text-primary);
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* 页面切换过渡 */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* 交错入场动画 */
+.stagger-enter {
+  animation: stagger-fade-up 0.4s var(--ease-out) both;
+}
+@keyframes stagger-fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* shimmer 骨架屏加载效果 */
+.shimmer {
+  background: linear-gradient(90deg,
+    var(--color-surface-muted) 0%,
+    var(--color-surface-elevated) 50%,
+    var(--color-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-move 1.5s infinite linear;
+}
+@keyframes shimmer-move {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* 等宽数字（需在组件上加 class="ds-num"） */

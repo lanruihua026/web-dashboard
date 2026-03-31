@@ -114,9 +114,9 @@ async function authHeader() {
  *   data.status: 0-离线，1-在线，2-未激活
  *
  * @returns {Promise<{
- *   phone:   { weight: number, percent: number, full: boolean },
- *   mouse:   { weight: number, percent: number, full: boolean },
- *   battery: { weight: number, percent: number, full: boolean },
+ *   phone:   { weight: number, percent: number, nearFull: boolean, full: boolean },
+ *   mouse:   { weight: number, percent: number, nearFull: boolean, full: boolean },
+ *   battery: { weight: number, percent: number, nearFull: boolean, full: boolean },
  *   online:  boolean,
  *   lastReportTime: string|null,
  *   overflowThresholdG: number|null,
@@ -158,11 +158,12 @@ export async function fetchDeviceProperties() {
 
   const findItem = (id) => list.find((item) => item.identifier === id)
 
-  // 解析单个仓格的三个属性
+  // 解析单个仓格的四个属性（重量、百分比、即将满载、已满溢）
   const parseBin = (prefix) => ({
-    weight: Number(findItem(`${prefix}_weight`)?.value ?? 0),
-    percent: Number(findItem(`${prefix}_percent`)?.value ?? 0),
-    full: findItem(`${prefix}_full`)?.value === 'true',
+    weight:   Number(findItem(`${prefix}_weight`)?.value ?? 0),
+    percent:  Number(findItem(`${prefix}_percent`)?.value ?? 0),
+    nearFull: findItem(`${prefix}_near_full`)?.value === 'true',
+    full:     findItem(`${prefix}_full`)?.value === 'true',
   })
 
   const phone   = parseBin('phone')

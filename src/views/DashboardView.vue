@@ -3,31 +3,18 @@
   <div class="dashboard">
 
     <!-- ===== 顶部标题栏 ===== -->
-    <header class="header">
-      <!-- 左侧：品牌 + 系统名称 -->
-      <div class="header-left">
-        <div class="brand-block">
-          <span class="brand-icon-wrap" aria-hidden="true">
-            <el-icon :size="22"><DataBoard /></el-icon>
-          </span>
-          <div class="brand-text">
-            <span class="title">电子废弃物分类回收站监控系统</span>
-            <span class="title-tagline">智能分拣 · 实时监控</span>
-          </div>
-        </div>
-      </div>
-
+    <AppHeader title="电子废弃物分类回收站监控系统" tagline="智能分拣 · 实时监控" :icon="DataBoard">
       <!-- 中部：设备状态信息 -->
-      <div class="header-center">
+      <template #center>
         <el-tooltip content="设备状态：与 OneNET 物联网平台的通信状态" placement="bottom">
           <div class="status-indicator">
-            <span class="status-dot" :class="properties.online ? 'online' : 'offline'"></span>
+            <StatusDot :status="properties.online ? 'online' : 'offline'" />
             <span class="status-text">{{ properties.online ? '设备就绪' : '设备离线' }}</span>
           </div>
         </el-tooltip>
         <el-tooltip content="AI推理：ESP32-CAM与YOLO视觉分析服务" placement="bottom">
           <div class="status-indicator">
-            <span class="status-dot" :class="aiServiceOnline ? 'online' : 'offline'"></span>
+            <StatusDot :status="aiServiceOnline ? 'online' : 'offline'" />
             <span class="status-text">{{ aiServiceOnline ? '推理在线' : '推理断开' }}</span>
           </div>
         </el-tooltip>
@@ -45,14 +32,12 @@
             <el-icon class="device-chip-icon" :size="14"><Connection /></el-icon>
           </span>
         </el-tooltip>
-      </div>
+      </template>
 
       <!-- 右侧：最后更新时间 + 自动刷新开关 + 手动刷新按钮 -->
-      <div class="header-right">
+      <template #right>
         <span class="update-time">更新：{{ lastUpdateTime || '尚未刷新' }}</span>
-        <el-button class="theme-toggle-btn" :icon="isDarkMode ? Sunny : Moon" @click="toggleTheme" round>
-          {{ isDarkMode ? '明亮模式' : '黑暗模式' }}
-        </el-button>
+        <ThemeToggle />
         <el-switch
           v-model="autoRefresh"
           active-text="自动刷新"
@@ -69,8 +54,8 @@
         <el-button type="primary" :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round>
           手动刷新
         </el-button>
-      </div>
-    </header>
+      </template>
+    </AppHeader>
 
     <main class="page-main">
 
@@ -143,63 +128,13 @@
     </div>
     <el-row :gutter="20" class="card-row">
       <!-- 遍历 binViews（包含预计算的样式与状态），每个仓位渲染一张卡片 -->
-      <el-col v-for="bin in binViews" :key="bin.key" :xs="24" :sm="24" :lg="8">
-        <el-card
-          class="bin-card"
-          :class="bin.cardClass"
-          shadow="hover"
-        >
-          <!-- 状态徽标 / 满溢遮罩 -->
-          <div v-if="bin.cardClass === 'card-full'" class="bin-overlay-full">
-            <div class="overlay-content">
-              <el-icon class="overlay-icon"><WarningFilled /></el-icon>
-              <div class="overlay-title">紧急清运</div>
-              <div class="overlay-subtitle">已满溢，请立即处理</div>
-            </div>
-          </div>
-          <div v-else-if="bin.cardClass === 'card-warning'" class="bin-badge badge-warning">
-            <el-icon class="badge-icon"><WarnTriangleFilled /></el-icon> 将满
-          </div>
-
-          <!-- 卡片头：图标 + 仓名 + 状态标签 -->
-          <div class="bin-header">
-            <span class="bin-icon-wrap">
-              <el-icon :size="24" class="bin-icon-el"><component :is="BIN_ICONS[bin.key]" /></el-icon>
-            </span>
-            <span class="bin-name">{{ bin.name }}</span>
-            <el-tag :type="bin.tagType" size="small" class="bin-status-tag">
-              {{ bin.statusText }}
-            </el-tag>
-          </div>
-
-          <!-- 指标区：当前重量 + 满溢百分比，数据来自 OneNET 物模型 -->
-          <div class="bin-metrics">
-            <div class="metric">
-              <div class="metric-label">当前重量</div>
-              <div class="metric-value">
-                <span class="value-number ds-num" :class="{ 'text-danger': bin.cardClass === 'card-full' }">{{ bin.weight }}</span>
-                <span class="value-unit">g</span>
-              </div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">满溢百分比</div>
-              <div class="metric-value">
-                <span class="value-number ds-num" :class="{ 'text-danger': bin.cardClass === 'card-full' }">{{ bin.percent.toFixed(1) }}</span>
-                <span class="value-unit">%</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 进度条：超出 100% 时截断显示，状态颜色与标签保持一致 -->
-          <el-tooltip :content="`容量上限：${settingsForm.overflowThresholdG} g`" placement="bottom">
-            <el-progress
-              :percentage="Math.min(bin.percent, 100)"
-              :status="bin.progress"
-              :stroke-width="10"
-              class="bin-progress"
-            />
-          </el-tooltip>
-        </el-card>
+      <el-col v-for="(bin, idx) in binViews" :key="bin.key" :xs="24" :sm="24" :lg="8">
+        <BinCard
+          :bin="bin"
+          :binIcon="BIN_ICONS[bin.key]"
+          :overflowThresholdG="settingsForm.overflowThresholdG"
+          :index="idx"
+        />
       </el-col>
     </el-row>
 
@@ -210,113 +145,18 @@
     </div>
     <el-row :gutter="20" class="card-row">
       <el-col :xs="24">
-        <el-card class="ai-card" shadow="hover">
-
-          <!-- 面板头：标题 + 检测状态标签 -->
-          <div class="ai-header">
-            <div>
-              <div class="ai-title">模型识别结果</div>
-              <div class="ai-subtitle">左：ESP32-CAM 实时画面（MJPEG，无流时降级为服务端最新帧） | 右：YOLO 识别结果（含边界框）</div>
-            </div>
-            <!-- 根据最新推理结果判断是否检测到目标 -->
-            <el-tag :type="aiResult.ok ? 'success' : 'info'" effect="light">
-              {{ aiResult.ok ? '检测到目标' : '暂无目标' }}
-            </el-tag>
-          </div>
-
-          <!-- 双列图像区 -->
-          <div class="ai-dual-panel">
-            <!-- 左侧：优先 ESP32-CAM MJPEG 实时流；无流地址时降级为服务端 latest-raw-image 轮询 -->
-            <div class="ai-panel">
-              <div class="panel-label">
-                <span class="panel-dot" :class="mjpegStreamUrl ? (mjpegStreamReady ? 'live-dot' : 'connecting-dot') : 'offline-dot'"></span>
-                {{ mjpegStreamUrl ? (mjpegStreamReady ? '实时流' : '连接中…') : '降级帧' }}
-              </div>
-              <div class="ai-preview ai-preview-stream ai-preview-stack">
-                <!-- MJPEG 与推理轮询共用 latest-raw：底层预加载一帧，断流时减轻白屏 -->
-                <template v-if="mjpegStreamUrl">
-                  <img
-                    v-if="rawImageUrl"
-                    :src="rawImageUrl"
-                    class="ai-image ai-image-stream-fallback"
-                    alt=""
-                    aria-hidden="true"
-                  />
-                  <img
-                    :src="mjpegStreamDisplaySrc"
-                    alt="ESP32-CAM MJPEG stream"
-                    class="ai-image ai-image-mjpeg"
-                    @load="onStreamImageLoad"
-                    @error="onStreamImageError"
-                  />
-                </template>
-                <template v-else>
-                  <img
-                    v-if="rawImageUrl"
-                    :src="rawImageUrl"
-                    alt="latest raw frame from server"
-                    class="ai-image"
-                    @error="onRawImageError"
-                  />
-                  <div v-else class="ai-image-placeholder">暂无画面</div>
-                </template>
-              </div>
-            </div>
-
-            <!-- 右侧：YOLO 推理后叠加边界框的标注图 -->
-            <div class="ai-panel">
-              <div class="panel-label">
-                <span class="panel-dot result-dot"></span>识别结果
-              </div>
-              <div class="ai-preview">
-                <!-- AI 服务断开时显示不可用提示（与硬件设备状态相互独立） -->
-                <div v-if="!aiServiceOnline" class="ai-image-placeholder camera-offline">
-                  <el-icon class="camera-offline-icon" :size="40"><Search /></el-icon>
-                  <div>识别服务不可用</div>
-                  <div class="camera-offline-sub">YOLO FastAPI 已断开连接</div>
-                </div>
-                <!-- imageUrl 由 normalizeAiResult 拼接，含缓存破坏时间戳 -->
-                <img
-                  v-else-if="aiResult.imageUrl"
-                  :src="aiResult.imageUrl"
-                  alt="annotated result"
-                  class="ai-image"
-                  @error="onAnnotatedImageError"
-                />
-                <div v-else class="ai-image-placeholder">暂无识别图片</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 推理元数据横向指标行：类别 / 置信度 / 时间戳 / 服务状态 -->
-          <div class="ai-metadata-row">
-            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
-              <span class="ai-metric-label">识别结果</span>
-              <span class="ai-metric-value" :class="{ 'text-danger-strong': !aiServiceOnline, 'text-success-bold ds-pop': aiResult.ok && aiServiceOnline }">
-                {{ !aiServiceOnline ? '不可用' : aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
-              </span>
-            </div>
-            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
-              <span class="ai-metric-label">置信度</span>
-              <span class="ai-metric-value" :class="{ 'text-danger-strong': !aiServiceOnline, 'text-success-bold ds-num ds-pop': aiResult.ok && aiServiceOnline }">
-                {{ !aiServiceOnline ? '不可用' : aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
-              </span>
-            </div>
-            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
-              <span class="ai-metric-label">更新时间</span>
-              <span class="ai-metric-value ds-num">
-                {{ aiResult.timestamp ? new Date(aiResult.timestamp).toLocaleString('zh-CN') : '尚无记录' }}
-              </span>
-            </div>
-            <div class="ai-metric" :class="{ 'metric-offline': !aiServiceOnline }">
-              <span class="ai-metric-label">服务端状态</span>
-              <!-- aiServiceOnline 为 false 时固定显示"断开"，优先级高于 message 字段 -->
-              <span class="ai-metric-value" :class="aiServiceOnline ? 'text-success-bold' : 'text-danger-strong ds-pulse-text'">
-                {{ aiServiceOnline ? '正常' : '断开' }}
-              </span>
-            </div>
-          </div>
-        </el-card>
+        <AiVisionPanel
+          :aiResult="aiResult"
+          :aiServiceOnline="aiServiceOnline"
+          :mjpegStreamUrl="mjpegStreamUrl"
+          :mjpegStreamReady="mjpegStreamReady"
+          :mjpegStreamDisplaySrc="mjpegStreamDisplaySrc"
+          :rawImageUrl="rawImageUrl"
+          @stream-load="onStreamImageLoad"
+          @stream-error="onStreamImageError"
+          @raw-error="onRawImageError"
+          @annotated-error="onAnnotatedImageError"
+        />
       </el-col>
     </el-row>
 
@@ -334,19 +174,19 @@
     </main>
 
     <!-- ===== 页脚：数据来源说明 ===== -->
-    <footer class="footer">
-      <div class="footer-inner page-shell">
-        <span class="footer-pill">OneNET AIoT</span>
-        <span class="footer-dot" aria-hidden="true">·</span>
-        <span class="footer-pill">YOLO FastAPI</span>
-        <span class="footer-dot" aria-hidden="true">·</span>
-        <span>每 2 秒自动刷新</span>
-      </div>
-    </footer>
+    <AppFooter :pills="['OneNET AIoT', 'YOLO FastAPI']" text="每 2 秒自动刷新" />
   </div>
 </template>
 
 <script setup>
+// 提取的共享组件
+import AppHeader from '../components/AppHeader.vue'
+import ThemeToggle from '../components/ThemeToggle.vue'
+import StatusDot from '../components/StatusDot.vue'
+import BinCard from '../components/BinCard.vue'
+import AiVisionPanel from '../components/AiVisionPanel.vue'
+import AppFooter from '../components/AppFooter.vue'
+
 // Element Plus 图标（ui-ux-pro-max：避免用 emoji 作为界面图标）
 import {
   Cellphone,
@@ -355,6 +195,7 @@ import {
   DataBoard,
   InfoFilled,
   Lightning,
+  Loading,
   Monitor,
   Moon,
   Refresh,
@@ -389,21 +230,28 @@ const toggleTheme = inject('toggleTheme', () => {})
 // 辅助函数：根据百分比/满溢状态计算展示样式
 // ───────────────────────────────────────────
 
-/** 根据重量百分比和满溢标志返回各 UI 属性，集中维护三档阈值逻辑 */
+/**
+ * 根据设备上报的三态状态（full / nearFull / 正常）计算展示样式。
+ * 优先使用设备侧语义：
+ *   - full=true      → 已满（红色）
+ *   - nearFull=true  → 即将满载，已达到满载阈值的 90%（橙色）
+ *   - 其余           → 正常（绿色）
+ */
 const binViews = computed(() =>
   BINS.map((b) => {
-    const { weight, percent, full } = properties.value[b.key]
+    const { weight, percent, nearFull, full } = properties.value[b.key]
     const isFull = full || percent >= 100
-    const isWarn = !isFull && percent >= 80
+    const isNearFull = !isFull && nearFull
     return {
       ...b,
       weight,
       percent,
+      nearFull,
       full,
-      cardClass:  isFull ? 'card-full'   : isWarn ? 'card-warning' : 'card-normal',
-      tagType:    isFull ? 'danger'       : isWarn ? 'warning'      : 'success',
-      statusText: isFull ? '已满'         : isWarn ? '警告'         : '正常',
-      progress:   isFull ? 'exception'   : isWarn ? 'warning'      : '',
+      cardClass:  isFull ? 'card-full'    : isNearFull ? 'card-warning' : 'card-normal',
+      tagType:    isFull ? 'danger'        : isNearFull ? 'warning'      : 'success',
+      statusText: isFull ? '已满'          : isNearFull ? '即将满载'     : '正常',
+      progress:   isFull ? 'exception'    : isNearFull ? 'warning'      : '',
     }
   })
 )
@@ -437,9 +285,10 @@ function loadDashboardCache() {
 function mergeCachedProperties(raw) {
   const d = raw && typeof raw === 'object' ? raw : {}
   const bin = (key) => ({
-    weight: Number(d[key]?.weight ?? 0),
-    percent: Number(d[key]?.percent ?? 0),
-    full: Boolean(d[key]?.full)
+    weight:   Number(d[key]?.weight ?? 0),
+    percent:  Number(d[key]?.percent ?? 0),
+    nearFull: Boolean(d[key]?.nearFull),
+    full:     Boolean(d[key]?.full)
   })
   return {
     phone: bin('phone'),
@@ -845,6 +694,7 @@ watch(mjpegStreamUrl, (next, prev) => {
   refreshRawImage(true)
 })
 
+// ── 满溢紧急通知（持续显示，需手动清运后自动消失）──
 let notificationInstance = null
 watch(() => BINS.some(b => properties.value[b.key].full), (isFull) => {
   if (isFull) {
@@ -863,6 +713,28 @@ watch(() => BINS.some(b => properties.value[b.key].full), (isFull) => {
     if (notificationInstance) {
       notificationInstance.close()
       notificationInstance = null
+    }
+  }
+}, { immediate: true })
+
+// ── 即将满载预警通知（6 秒后自动消失，触发一次不重复弹出）──
+let nearFullNotifyInstance = null
+watch(() => BINS.some(b => properties.value[b.key].nearFull), (isNearFull) => {
+  if (isNearFull) {
+    // 已有通知或已处于满溢状态时不重复弹出
+    if (!nearFullNotifyInstance && !BINS.some(b => properties.value[b.key].full)) {
+      nearFullNotifyInstance = ElNotification({
+        title: '仓位预警',
+        message: '部分回收仓重量已接近满载阈值（≥90%），请提前安排清运。',
+        type: 'warning',
+        duration: 6000,
+        onClose: () => { nearFullNotifyInstance = null }
+      })
+    }
+  } else {
+    if (nearFullNotifyInstance) {
+      nearFullNotifyInstance.close()
+      nearFullNotifyInstance = null
     }
   }
 }, { immediate: true })
@@ -1048,8 +920,8 @@ async function saveSettings() {
 .global-alert-active {
   animation: danger-pulse-border 2s infinite ease-in-out;
   pointer-events: none;
-  position: fixed; 
-  inset: 0; 
+  position: fixed;
+  inset: 0;
   z-index: 9999;
 }
 
@@ -1060,7 +932,7 @@ async function saveSettings() {
 </style>
 
 <style scoped>
-/* ===== 根容器（简洁平面背景）===== */
+/* ===== 根容器 ===== */
 .dashboard {
   min-height: 100vh;
   background: var(--color-page-bg);
@@ -1068,85 +940,22 @@ async function saveSettings() {
   transition: background 0.25s ease;
 }
 
-/* ===== 顶部导航栏 ===== */
-.header {
-  display: flex;
-  justify-content: space-between;
+/* ===== Header 内嵌元素（通过 slot 传入，scoped 仍生效） ===== */
+.status-indicator {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 0 28px;
-  min-height: 64px;
-  background: var(--color-header-bg);
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: var(--color-shadow);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  border-bottom: 2px solid var(--color-primary);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* 品牌区 */
-.brand-block {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.brand-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  color: var(--color-primary);
+  gap: 6px;
+  cursor: help;
+  padding: 4px 8px;
+  border-radius: 999px;
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
 }
 
-[data-theme='dark'] .brand-icon-wrap {
-  color: var(--color-accent);
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  letter-spacing: 0.01em;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.title-tagline {
-  font-size: 11px;
+.status-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
   font-weight: 500;
-  color: var(--color-text-tertiary);
-  letter-spacing: 0.08em;
-}
-
-.header-center {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .device-chip {
@@ -1176,120 +985,15 @@ async function saveSettings() {
   text-overflow: ellipsis;
 }
 
-/* 状态指示圆点 */
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 5px;
-  vertical-align: middle;
-  flex-shrink: 0;
-}
-
-.status-dot.online {
-  background: var(--color-success);
-  box-shadow: 0 0 0 2px var(--color-success-bg);
-  animation: pulse-dot 2s infinite;
-}
-
-.status-dot.offline {
-  background: var(--color-danger);
-}
-
-@keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 0 2px var(--color-success-bg); }
-  50%       { box-shadow: 0 0 0 4px var(--color-success-bg); }
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
 .update-time {
   font-size: 12px;
   color: var(--color-text-tertiary);
   white-space: nowrap;
 }
 
-.theme-toggle-btn {
-  --el-button-bg-color: var(--color-surface-muted);
-  --el-button-border-color: var(--color-border);
-  --el-button-text-color: var(--color-text-secondary);
-  --el-button-hover-bg-color: var(--color-accent-light);
-  --el-button-hover-border-color: var(--color-accent);
-  --el-button-hover-text-color: var(--color-accent);
-}
-
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: help;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-}
-
-.status-text {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
 /* 自动刷新开关主题色 */
 .auto-switch {
   --el-switch-on-color: var(--color-primary);
-}
-
-/* ===== 满溢警告横幅 ===== */
-.full-alert-wrapper {
-  margin: 0 0 16px;
-}
-
-.full-alert {
-  border-radius: 12px;
-  border: none;
-}
-
-.full-alert :deep(.el-alert__title) {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.full-alert :deep(.el-alert__icon) {
-  font-size: 20px;
-  width: 20px;
-}
-
-.full-alert-desc {
-  font-size: 14px;
-  opacity: 0.95;
-}
-
-.ds-pulse-danger {
-  animation: pulse-danger 2s infinite ease-out;
-}
-
-@keyframes pulse-danger {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-
-[data-theme='dark'] .ds-pulse-danger {
-  animation: pulse-danger-dark 2s infinite ease-out;
-}
-
-@keyframes pulse-danger-dark {
-  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
-  70% { box-shadow: 0 0 0 12px rgba(248, 113, 113, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
 }
 
 /* ===== 分区标题 ===== */
@@ -1330,482 +1034,9 @@ async function saveSettings() {
   color: var(--color-text-tertiary);
 }
 
-/* ===== 卡片行间距（主区域已含 page-main 边距）===== */
+/* ===== 卡片行间距 ===== */
 .card-row {
   padding: 0;
-}
-
-/* ===== 垃圾桶仓位卡片 ===== */
-.bin-card {
-  border-radius: 16px;
-  overflow: hidden;
-  transition: transform 0.22s ease-out, box-shadow 0.22s ease-out;
-  margin-bottom: 20px;
-  border: 1px solid var(--color-border);
-  position: relative;
-}
-
-.bin-card:hover,
-.ai-card:hover {
-  transform: translateY(-3px);
-  box-shadow:
-    0 4px 6px rgba(0, 0, 0, 0.04),
-    0 12px 32px rgba(15, 30, 55, 0.1);
-}
-
-[data-theme='dark'] .bin-card:hover,
-[data-theme='dark'] .ai-card:hover {
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.35),
-    0 16px 40px rgba(0, 0, 0, 0.45);
-}
-
-/* 满溢：红色边框 + 主题适配背景 */
-.card-full {
-  border: 2px solid var(--card-full-border) !important;
-  background: var(--card-full-bg) !important;
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
-}
-
-[data-theme='dark'] .card-full {
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
-}
-
-/* 警告（≥80%）：橙色边框 + 主题适配背景 */
-.card-warning {
-  border: 2px solid var(--card-warning-border) !important;
-  background: var(--card-warning-bg) !important;
-}
-
-/* 正常：绿色左边框点缀 */
-.card-normal {
-  border: 2px solid var(--card-normal-border) !important;
-  background: var(--card-normal-bg) !important;
-}
-
-/* 绝对定位徽标 */
-.bin-badge {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
-  z-index: 10;
-  letter-spacing: 0.5px;
-}
-
-.badge-icon {
-  font-size: 14px;
-}
-
-.badge-warning {
-  background: var(--color-warning);
-  color: #fff;
-}
-
-.bin-overlay-full {
-  position: absolute;
-  inset: 0;
-  background: rgba(220, 38, 38, 0.85);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  animation: pulse-danger-overlay 2s infinite ease-out;
-}
-
-.overlay-content {
-  text-align: center;
-}
-
-.overlay-icon {
-  font-size: 48px;
-  margin-bottom: 8px;
-  animation: shake 0.5s infinite ease-in-out alternate;
-}
-
-.overlay-title {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  margin-bottom: 4px;
-}
-
-.overlay-subtitle {
-  font-size: 14px;
-  font-weight: 500;
-  opacity: 0.9;
-}
-
-@keyframes pulse-danger-overlay {
-  0% { background: rgba(239, 68, 68, 0.8); }
-  50% { background: rgba(239, 68, 68, 0.95); }
-  100% { background: rgba(239, 68, 68, 0.8); }
-}
-
-@keyframes shake {
-  0% { transform: rotate(-5deg); }
-  100% { transform: rotate(5deg); }
-}
-
-[data-theme='dark'] .bin-overlay-full {
-  background: rgba(239, 68, 68, 0.85);
-}
-
-/* 卡片头部 */
-.bin-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.bin-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.bin-icon-el {
-  color: var(--color-primary);
-}
-
-[data-theme='dark'] .bin-icon-el {
-  color: var(--color-accent);
-}
-
-.bin-name {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  flex: 1;
-}
-
-.bin-status-tag {
-  font-size: 12px;
-}
-
-/* 指标横排布局 */
-.bin-metrics {
-  display: flex;
-  gap: 0;
-  margin-bottom: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.metric {
-  flex: 1;
-  padding: 12px 16px;
-  background: var(--color-surface-muted);
-}
-
-.metric:first-child {
-  border-right: 1px solid var(--color-border);
-}
-
-.metric-label {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 6px;
-}
-
-.metric-value {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-/* 大号数字 */
-.value-number {
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.value-unit {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-
-.bin-progress {
-  margin-bottom: 8px;
-}
-
-/* ===== AI 卡片 ===== */
-.ai-card {
-  border-radius: 16px;
-  overflow: hidden;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
-  margin-bottom: 20px;
-  border: 1px solid var(--color-border);
-}
-
-/* ===== AI 面板头 ===== */
-.ai-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.ai-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.ai-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-}
-
-/* 双列等宽图像区 */
-.ai-dual-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.ai-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.panel-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  letter-spacing: 0.3px;
-}
-
-/* 面板状态圆点 */
-.panel-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.live-dot {
-  background: var(--color-success);
-  animation: pulse 2s infinite;
-}
-
-.offline-dot {
-  background: var(--color-text-disabled);
-}
-
-.connecting-dot {
-  background: var(--el-color-warning);
-  animation: pulse 1s infinite;
-}
-
-.result-dot {
-  background: var(--color-accent);
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.85); }
-}
-
-/* 底部指标四列 */
-.ai-metadata-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-/* 图像容器 */
-.ai-preview {
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  flex: 1;
-}
-
-.ai-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 240px;
-  object-fit: contain;
-  background: var(--color-surface-muted);
-}
-
-/* 左侧 MJPEG 叠在 latest-raw 之上，断流时底层仍可能看到最近一帧 */
-.ai-preview-stack {
-  position: relative;
-  min-height: 240px;
-}
-
-.ai-preview-stack .ai-image-stream-fallback {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 240px;
-  object-fit: contain;
-  z-index: 0;
-}
-
-.ai-preview-stack .ai-image-mjpeg {
-  position: relative;
-  z-index: 1;
-  background: transparent;
-}
-
-.ai-image-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 240px;
-  color: var(--color-text-tertiary);
-  font-size: 14px;
-}
-
-.camera-offline {
-  flex-direction: column;
-  gap: 8px;
-  background: var(--color-surface-muted);
-  color: var(--color-text-secondary);
-}
-
-.camera-offline-icon {
-  color: var(--color-text-tertiary);
-  opacity: 0.65;
-}
-
-.camera-offline-sub {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-}
-
-/* 单个指标卡片 */
-.ai-metric {
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  transition: border-color 0.2s;
-}
-
-.ai-metric:hover {
-  border-color: var(--color-border-strong);
-}
-
-.ai-metric-label {
-  display: block;
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.ai-metric-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  word-break: break-word;
-}
-
-.text-danger {
-  color: var(--color-danger) !important;
-}
-
-.ai-metric-value.text-danger {
-  color: var(--color-danger);
-}
-
-.ai-metric-value.text-success {
-  color: var(--color-success);
-}
-
-.ai-metric-value.text-danger-strong {
-  color: var(--color-danger);
-  font-weight: 700;
-}
-
-.ai-metric-value.text-success-bold {
-  color: var(--color-success);
-  font-weight: 700;
-}
-
-.metric-offline {
-  background: repeating-linear-gradient(
-    45deg,
-    var(--color-surface-muted),
-    var(--color-surface-muted) 10px,
-    rgba(239, 68, 68, 0.03) 10px,
-    rgba(239, 68, 68, 0.03) 20px
-  );
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-[data-theme='dark'] .metric-offline {
-  background: repeating-linear-gradient(
-    45deg,
-    var(--color-surface-muted),
-    var(--color-surface-muted) 10px,
-    rgba(239, 68, 68, 0.05) 10px,
-    rgba(239, 68, 68, 0.05) 20px
-  );
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.ds-pop {
-  animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-@keyframes pop-in {
-  0% { opacity: 0; transform: scale(0.8); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.ds-pulse-text {
-  animation: pulse-text 2s infinite ease-out;
-}
-
-@keyframes pulse-text {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 /* ===== 错误提示 ===== */
@@ -1814,84 +1045,8 @@ async function saveSettings() {
   border-radius: 10px;
 }
 
-/* ===== 页脚 ===== */
-.footer {
-  text-align: center;
-  padding: 24px 0 28px;
-  margin-top: 8px;
-  border-top: 1px solid var(--color-border);
-}
-
-.footer-inner {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-}
-
-.footer-pill {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-}
-
-.footer-dot {
-  color: var(--color-text-disabled);
-  user-select: none;
-}
-
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
-  .ai-dual-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .ai-metadata-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .bin-metrics {
-    flex-direction: column;
-    gap: 0;
-  }
-
-  .metric:first-child {
-    border-right: none;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .page-main {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .header {
-    min-height: auto;
-    padding: 12px 16px;
-  }
-
-  .brand-block {
-    align-items: flex-start;
-  }
-
-  .title {
-    white-space: normal;
-    font-size: 15px;
-  }
-
-  .title-tagline {
-    display: none;
-  }
-
   .device-chip-muted {
     max-width: 100%;
     white-space: normal;
