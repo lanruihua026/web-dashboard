@@ -8,13 +8,9 @@
     <!-- 顶部渐变色条 -->
     <div class="card-accent-strip" :class="bin.cardClass" aria-hidden="true"></div>
 
-    <!-- 满溢遮罩（毛玻璃） -->
-    <div v-if="bin.cardClass === 'card-full'" class="bin-overlay-full">
-      <div class="overlay-content">
-        <el-icon class="overlay-icon"><WarningFilled /></el-icon>
-        <div class="overlay-title">紧急清运</div>
-        <div class="overlay-subtitle">已满溢，请立即处理</div>
-      </div>
+    <!-- 满溢角标（不遮挡重量与进度条，与「即将满载」角标风格一致） -->
+    <div v-if="bin.cardClass === 'card-full'" class="bin-badge badge-full">
+      <el-icon class="badge-icon"><WarningFilled /></el-icon> 满溢
     </div>
 
     <!-- 即将满载角标（重量已达满载阈值的 90%） -->
@@ -139,57 +135,6 @@ defineProps({
   background: var(--card-normal-bg) !important;
 }
 
-/* 满溢遮罩 */
-.bin-overlay-full {
-  position: absolute;
-  inset: 0;
-  background: rgba(220, 38, 38, 0.82);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  animation: pulse-danger-overlay 2s infinite ease-out;
-}
-
-.overlay-content { text-align: center; }
-
-.overlay-icon {
-  font-size: 48px;
-  margin-bottom: 8px;
-  animation: shake 0.5s infinite ease-in-out alternate;
-}
-
-.overlay-title {
-  font-size: var(--font-size-xl, 22px);
-  font-weight: 800;
-  letter-spacing: 2px;
-  margin-bottom: 4px;
-}
-
-.overlay-subtitle {
-  font-size: var(--font-size-base, 14px);
-  font-weight: 500;
-  opacity: 0.9;
-}
-
-@keyframes pulse-danger-overlay {
-  0%   { background: rgba(239, 68, 68, 0.78); }
-  50%  { background: rgba(239, 68, 68, 0.95); }
-  100% { background: rgba(239, 68, 68, 0.78); }
-}
-
-@keyframes shake {
-  0%   { transform: rotate(-5deg); }
-  100% { transform: rotate(5deg); }
-}
-
-[data-theme='dark'] .bin-overlay-full {
-  background: rgba(239, 68, 68, 0.85);
-}
-
 /* 预警角标 */
 .bin-badge {
   position: absolute;
@@ -212,6 +157,12 @@ defineProps({
 .badge-warning {
   background: var(--color-warning);
   color: #fff;
+}
+
+.badge-full {
+  background: var(--color-danger, #ef4444);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.45);
 }
 
 @keyframes breathe {

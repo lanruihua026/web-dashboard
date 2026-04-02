@@ -3,7 +3,8 @@ import DashboardView from '../views/DashboardView.vue'
 
 const routes = [
   { path: '/', component: DashboardView },
-  { path: '/history', component: () => import('../views/HistoryView.vue') }
+  { path: '/history', component: () => import('../views/HistoryView.vue') },
+  { path: '/messages', component: () => import('../views/MessageCenterView.vue') }
 ]
 
 export default createRouter({

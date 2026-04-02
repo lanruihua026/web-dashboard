@@ -9,7 +9,7 @@
         </el-button>
       </template>
       <template #right>
-        <span class="data-count">共 {{ filteredData.length }} 个数据点</span>
+        <span class="data-count">共 {{ filteredData.length }} 个数据点 / {{ totalDropEvents }} 次投放</span>
         <ThemeToggle />
         <TimeFilterGroup :options="TIME_OPTIONS" v-model="selectedMinutes" />
         <el-button size="small" @click="onClear" plain class="clear-btn">清空记录</el-button>
@@ -45,6 +45,28 @@
           />
         </div>
 
+        <div class="chart-card category-card">
+          <div class="chart-title">
+            <span>投放类别统计</span>
+            <span class="chart-subtitle">最近 {{ selectedMinutes || '全部' }} 分钟内按识别结果推断的近似投放次数</span>
+          </div>
+          <div class="category-grid">
+            <div v-for="item in categorySummary" :key="item.key" class="category-item">
+              <div class="category-item-head">
+                <div class="category-item-icon">
+                  <el-icon :size="18"><component :is="BIN_ICONS[item.key]" /></el-icon>
+                </div>
+                <div>
+                  <div class="category-item-title">{{ item.label }}</div>
+                  <div class="category-item-hint">近似投放次数</div>
+                </div>
+              </div>
+              <div class="category-item-count ds-num">{{ item.count }}</div>
+              <div class="category-item-meta">最近一次：{{ formatEventTime(item.lastTime) }}</div>
+            </div>
+          </div>
+        </div>
+
         <!-- ===== 主图：重量趋势折线图 ===== -->
         <div class="chart-card">
           <div class="chart-title">
@@ -69,10 +91,10 @@
           <div class="chart-card mb-0 table-card">
             <div class="chart-title">
               <span>历史明细数据</span>
-              <span class="chart-subtitle">最近 {{ selectedMinutes || '全部' }} 分钟采集记录</span>
+              <span class="chart-subtitle">最近 {{ selectedMinutes || '全部' }} 分钟采集记录，共 {{ filteredData.length }} 条</span>
             </div>
             <div class="table-container">
-              <el-table :data="[...filteredData].reverse()" height="100%" stripe border size="small">
+              <el-table :data="pagedTableData" height="100%" stripe border size="small">
                 <el-table-column prop="time" label="采集时间" width="160" align="center">
                   <template #default="{ row }">
                     {{ new Date(row.time).toLocaleTimeString('zh-CN', { hour12: false }) }}
@@ -83,6 +105,18 @@
                 <el-table-column prop="battery" label="电池仓 (g)" align="right" />
               </el-table>
             </div>
+            <div class="table-pagination">
+              <span class="table-page-meta">第 {{ currentPage }} / {{ totalPages }} 页</span>
+              <el-pagination
+                v-model:current-page="currentPage"
+                v-model:page-size="pageSize"
+                background
+                small
+                layout="total, sizes, prev, pager, next"
+                :page-sizes="PAGE_SIZE_OPTIONS"
+                :total="filteredData.length"
+              />
+            </div>
           </div>
         </div>
       </template>
@@ -90,7 +124,7 @@
     </main>
 
     <!-- ===== 页脚 ===== -->
-    <AppFooter text="数据采集自仪表盘轮询 · localStorage · 最多保留最近 30 分钟" />
+    <AppFooter text="重量历史与投放统计均来自仪表盘轮询 · localStorage · 最多保留最近 30 分钟" />
   </div>
 </template>
 
@@ -112,10 +146,11 @@ import TimeFilterGroup from '../components/TimeFilterGroup.vue'
 import AppFooter from '../components/AppFooter.vue'
 
 import { useChartTheme, buildTrendOption, buildBarOption, BINS_CHART } from '../composables/useChartTheme'
-import { historyData, getFilteredHistory, clearHistory } from '../store/historyStore'
+import { getFilteredHistory, getDropCategorySummary, clearHistory } from '../store/historyStore'
 
 const router = useRouter()
 const isDarkMode = inject('isDarkMode', computed(() => false))
+const PAGE_SIZE_OPTIONS = [10, 15, 20]
 
 // ───────────────────────────────────────────
 // 仓位配置
@@ -144,8 +179,34 @@ const chartTheme = useChartTheme(isDarkMode)
 // 响应式状态
 // ───────────────────────────────────────────
 const selectedMinutes = ref(15)
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 const filteredData = computed(() => getFilteredHistory(selectedMinutes.value))
+const reversedFilteredData = computed(() => [...filteredData.value].reverse())
+const totalPages = computed(() => Math.max(1, Math.ceil(reversedFilteredData.value.length / pageSize.value)))
+const pagedTableData = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return reversedFilteredData.value.slice(start, start + pageSize.value)
+})
+const categorySummary = computed(() => getDropCategorySummary(selectedMinutes.value))
+const totalDropEvents = computed(() => categorySummary.value.reduce((sum, item) => sum + item.count, 0))
+
+watch([selectedMinutes, pageSize], () => {
+  currentPage.value = 1
+})
+
+watch(reversedFilteredData, (rows) => {
+  const maxPage = Math.max(1, Math.ceil(rows.length / pageSize.value))
+  if (currentPage.value > maxPage) {
+    currentPage.value = maxPage
+  }
+}, { deep: false })
+
+function formatEventTime(time) {
+  if (!time) return '暂无记录'
+  return new Date(time).toLocaleTimeString('zh-CN', { hour12: false })
+}
 
 // 最新一条数据
 const latestData = computed(() => {
@@ -354,6 +415,67 @@ async function onClear() {
   height: 380px;
 }
 
+.category-card {
+  margin-top: -2px;
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.category-item {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.category-item-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.category-item-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  background: var(--color-accent-light);
+}
+
+.category-item-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.category-item-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.category-item-count {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  line-height: 1;
+}
+
+.category-item-meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
 .bottom-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -381,8 +503,25 @@ async function onClear() {
   border: 1px solid var(--color-border);
 }
 
+.table-pagination {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.table-page-meta {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 900px) {
+  .category-grid {
+    grid-template-columns: 1fr;
+  }
   .bottom-grid {
     grid-template-columns: 1fr;
   }
@@ -401,6 +540,9 @@ async function onClear() {
 }
 
 @media (max-width: 600px) {
+  .table-pagination {
+    align-items: flex-start;
+  }
   .bar-chart-container {
     height: 220px;
   }

@@ -33,7 +33,8 @@ defineProps({
 }
 
 .status-dot.connecting {
-  background: var(--el-color-warning, #e6a23c);
+  background: var(--color-warning);
+  box-shadow: 0 0 0 2px var(--color-warning-bg);
   animation: pulse-dot 1s infinite;
 }
 

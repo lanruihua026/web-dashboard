@@ -102,7 +102,7 @@ onMounted(() => {
 }
 
 .filter-btn.active {
-  color: #fff;
+  color: var(--color-on-primary);
   font-weight: 600;
 }
 

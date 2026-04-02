@@ -1,6 +1,6 @@
 <template>
-  <!-- 仪表盘根容器 -->
-  <div class="dashboard">
+  <!-- 仪表盘根容器（满溢时仅对本容器做内阴影脉冲，不操作 body） -->
+  <div class="dashboard" :class="{ 'dashboard--overflow-alert': hasAnyBinFull }">
 
     <!-- ===== 顶部标题栏 ===== -->
     <AppHeader title="电子废弃物分类回收站监控系统" tagline="智能分拣 · 实时监控" :icon="DataBoard">
@@ -8,14 +8,14 @@
       <template #center>
         <el-tooltip content="设备状态：与 OneNET 物联网平台的通信状态" placement="bottom">
           <div class="status-indicator">
-            <StatusDot :status="properties.online ? 'online' : 'offline'" />
-            <span class="status-text">{{ properties.online ? '设备就绪' : '设备离线' }}</span>
+            <StatusDot :status="deviceStatusPhase" />
+            <span class="status-text">{{ deviceStatusText }}</span>
           </div>
         </el-tooltip>
         <el-tooltip content="AI推理：ESP32-CAM与YOLO视觉分析服务" placement="bottom">
           <div class="status-indicator">
-            <StatusDot :status="aiServiceOnline ? 'online' : 'offline'" />
-            <span class="status-text">{{ aiServiceOnline ? '推理在线' : '推理断开' }}</span>
+            <StatusDot :status="aiStatusPhase" />
+            <span class="status-text">{{ aiStatusText }}</span>
           </div>
         </el-tooltip>
         <span class="device-chip">
@@ -45,13 +45,18 @@
           @change="onAutoRefreshChange"
           class="auto-switch"
         />
-        <el-button type="info" plain :icon="TrendCharts" @click="router.push('/history')" round>
+        <el-badge :value="overflowAlertCount" :hidden="overflowAlertCount === 0" :max="99" class="msg-badge-wrap">
+          <el-button :icon="Bell" @click="router.push('/messages')" round class="header-btn header-btn-muted">
+            消息中心
+          </el-button>
+        </el-badge>
+        <el-button :icon="TrendCharts" @click="router.push('/history')" round class="header-btn header-btn-muted">
           历史趋势
         </el-button>
-        <el-button type="warning" plain :icon="Setting" @click="openSettings" round>
+        <el-button :icon="Setting" @click="openSettings" round class="header-btn header-btn-warn">
           系统设置
         </el-button>
-        <el-button type="primary" :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round>
+        <el-button :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round class="header-btn header-btn-primary">
           手动刷新
         </el-button>
       </template>
@@ -69,7 +74,7 @@
               <el-tooltip content="0.00~1.00，低于此值的检测结果不触发舵机分拣；保存后同步到推理服务与 ESP32-S3（物模型 ai_conf_threshold）" placement="top" :hide-after="0">
                 <el-icon><InfoFilled /></el-icon>
               </el-tooltip>
-              <span style="color: var(--el-color-info); font-size: 12px; margin-left: auto;">当前：{{ settingsForm.confThreshold.toFixed(2) }}（0~1）</span>
+              <span class="form-label-meta">当前：{{ settingsForm.confThreshold.toFixed(2) }}（0~1）</span>
             </div>
           </template>
           <el-input-number
@@ -88,7 +93,7 @@
               <el-tooltip content="超过此重量触发满溢警报；与上方置信度阈值一并经 OneNET 同步到设备（物模型 overflow_threshold_g / ai_conf_threshold）" placement="top" :hide-after="0">
                 <el-icon><InfoFilled /></el-icon>
               </el-tooltip>
-              <span style="color: var(--el-color-info); font-size: 12px; margin-left: auto;">单位：g</span>
+              <span class="form-label-meta">单位：g</span>
             </div>
           </template>
           <el-input-number
@@ -101,7 +106,7 @@
         </el-form-item>
       </el-form>
       <!-- 保存时的逐步同步进度提示 -->
-      <div v-if="settingsSyncMsg" style="margin-top: 12px; font-size: 13px; color: var(--el-color-info); display: flex; align-items: center; gap: 6px;">
+      <div v-if="settingsSyncMsg" class="settings-sync-hint">
         <el-icon class="is-loading"><Loading /></el-icon>
         {{ settingsSyncMsg }}
       </div>
@@ -120,6 +125,52 @@
       </template>
     </el-dialog>
 
+
+    <!-- ===== 满溢报警对话框（严格使用 Element Plus 官方 el-dialog 模板写法） ===== -->
+    <el-dialog
+      v-model="overflowAlertVisible"
+      width="520px"
+      :close-on-click-modal="false"
+      destroy-on-close
+      class="overflow-alert-dialog"
+    >
+      <template #header>
+        <div class="overflow-dialog-title">
+          <el-icon class="overflow-dialog-title-icon"><WarningFilled /></el-icon>
+          <span>满溢警报</span>
+        </div>
+      </template>
+
+      <el-alert
+        title="检测到以下回收仓已达到满溢阈值，请立即安排清运。"
+        type="error"
+        :closable="false"
+        show-icon
+        class="overflow-dialog-alert"
+      />
+
+      <div class="overflow-dialog-list">
+        <div
+          v-for="bin in overflowAlertBins"
+          :key="bin.key"
+          class="overflow-dialog-item"
+        >
+          <div class="overflow-dialog-item-main">
+            <span class="overflow-dialog-item-name">{{ bin.name }}</span>
+            <el-tag type="danger" effect="light" round>满溢</el-tag>
+          </div>
+          <div class="overflow-dialog-item-meta">
+            当前重量：{{ Number(bin.weight ?? 0).toFixed(0) }} g
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button type="primary" @click="overflowAlertVisible = false">
+          知道了
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- ===== 垃圾桶状态卡片区（手机仓 / 数码配件仓 / 电池仓）===== -->
     <div class="section-head card-row section-head-first">
@@ -203,6 +254,7 @@ import {
   Setting,
   Sunny,
   TrendCharts,
+  Bell,
   WarningFilled,
   WarnTriangleFilled
 } from '@element-plus/icons-vue'
@@ -213,22 +265,48 @@ const BIN_ICONS = {
   mouse: Connection,
   battery: Lightning
 }
-// ElMessage, ElNotification 显式导入，不依赖 auto-import（避免 Vite transform 失效时静默无反馈）
+// ElMessage、ElNotification 显式导入，不依赖 auto-import
 import { ElMessage, ElNotification } from 'element-plus'
 // AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
 import { fetchLatestAiResult, fetchConfig, updateConfig, fetchCamInfo } from '../api/ai'
 // OneNET 平台 API：获取设备物模型属性、下发满溢阈值
 import { fetchDeviceProperties, setOverflowThresholdOnDevice, setAiConfThresholdOnDevice } from '../api/oneNet'
 // 历史数据存储：每次成功获取属性后追加数据点
-import { addDataPoint } from '../store/historyStore'
+import { addDataPoint, recordDropEvent } from '../store/historyStore'
+import { appendOverflowAlert, overflowAlertCount } from '../store/overflowAlertStore'
 
 const router = useRouter()
-const isDarkMode = inject('isDarkMode', computed(() => false))
-const toggleTheme = inject('toggleTheme', () => {})
 
 // ───────────────────────────────────────────
 // 辅助函数：根据百分比/满溢状态计算展示样式
 // ───────────────────────────────────────────
+
+const STATUS_INIT_TIMEOUT_MS = 4000
+const AI_CATEGORY_RULES = [
+  { key: 'phone', aliases: ['MobilePhone', 'Phone', '手机'] },
+  { key: 'mouse', aliases: ['Charger', 'Earphone', 'Accessory', 'Mouse', '数码配件', '配件', '充电器', '耳机'] },
+  { key: 'battery', aliases: ['Battery', '电池'] }
+]
+
+function normalizeAliasToken(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+}
+
+function mapAiLabelToCategory(label) {
+  const token = normalizeAliasToken(label)
+  if (!token) return null
+
+  for (const rule of AI_CATEGORY_RULES) {
+    if (rule.aliases.some((alias) => normalizeAliasToken(alias) === token)) {
+      return rule.key
+    }
+  }
+
+  return null
+}
 
 /**
  * 根据设备上报的三态状态（full / nearFull / 正常）计算展示样式。
@@ -256,6 +334,11 @@ const binViews = computed(() =>
   })
 )
 
+/** 是否存在任一仓格处于满溢态（与卡片 card-full 一致，用于仪表盘红边脉冲） */
+const hasAnyBinFull = computed(() =>
+  binViews.value.some((b) => b.cardClass === 'card-full')
+)
+
 // ───────────────────────────────────────────
 // 常量：仓位配置
 // ───────────────────────────────────────────
@@ -266,6 +349,56 @@ const BINS = [
   { key: 'mouse',   name: '数码配件仓' },
   { key: 'battery', name: '电池仓' }
 ]
+
+/** 满溢上升沿检测：与 binViews 一致，full 或 percent≥100 视为已满 */
+function effectiveBinFull(p) {
+  if (!p || typeof p !== 'object') return false
+  return Boolean(p.full) || Number(p.percent) >= 100
+}
+
+const prevBinFull = ref(Object.fromEntries(BINS.map((b) => [b.key, false])))
+const overflowEdgeReady = ref(false)
+const overflowAlertVisible = ref(false)
+const overflowAlertBins = ref([])
+
+function openOverflowAlertDialog(bins) {
+  overflowAlertBins.value = bins
+  overflowAlertVisible.value = true
+}
+
+function checkOverflowRisingEdge(data) {
+  const eff = (key) => effectiveBinFull(data[key])
+  if (!overflowEdgeReady.value) {
+    BINS.forEach((b) => {
+      prevBinFull.value[b.key] = eff(b.key)
+    })
+    overflowEdgeReady.value = true
+    return
+  }
+  const risen = []
+  BINS.forEach((b) => {
+    const key = b.key
+    const now = eff(key)
+    const was = prevBinFull.value[key]
+    if (now && !was) {
+      const p = data[key]
+      risen.push({
+        key,
+        name: b.name,
+        weight: Number(p?.weight ?? 0)
+      })
+    }
+    prevBinFull.value[key] = now
+  })
+  if (risen.length === 0) return
+
+  const names = risen.map((x) => x.name).join('、')
+  appendOverflowAlert({
+    summary: `以下仓位已满溢：${names}，请立即清运。`,
+    bins: risen
+  })
+  openOverflowAlertDialog(risen)
+}
 
 /** 仪表盘最新数据本地持久化（刷新后恢复，避免回到全零初始态） */
 const DASHBOARD_CACHE_KEY = 'dashboard_live_cache_v1'
@@ -364,6 +497,24 @@ let camInfoErrorStreak = 0
 let mjpegErrorStreak = 0
 /** YOLO FastAPI 服务是否可达；与硬件设备在线状态相互独立 */
 const aiServiceOnline = ref(true)
+/** 顶部设备状态展示相位：首屏统一先展示探测中，再收敛到真实状态 */
+const deviceStatusPhase = ref('connecting')
+/** 顶部 AI 状态展示相位：避免刷新后直接亮绿点误导 */
+const aiStatusPhase = ref('connecting')
+const deviceStatusText = computed(() => (
+  deviceStatusPhase.value === 'connecting'
+    ? '设备探测中'
+    : deviceStatusPhase.value === 'online'
+      ? '设备就绪'
+      : '设备离线'
+))
+const aiStatusText = computed(() => (
+  aiStatusPhase.value === 'connecting'
+    ? '推理探测中'
+    : aiStatusPhase.value === 'online'
+      ? '推理在线'
+      : '推理断开'
+))
 
 // ───────────────────────────────────────────
 // 系统设置对话框状态
@@ -413,6 +564,9 @@ let deviceRefreshJob = null
 let aiRefreshJob = null
 /** MJPEG 延迟重连定时器；只在确认流异常时才触发软重连 */
 let mjpegRetryTimer = null
+/** 首屏状态探测超时定时器：超时后从 connecting 收敛到 offline */
+let deviceStatusInitTimer = null
+let aiStatusInitTimer = null
 
 // ───────────────────────────────────────────
 // 数据处理
@@ -489,6 +643,33 @@ function clearMjpegRetryTimer() {
   }
 }
 
+function clearStatusInitTimer(kind) {
+  const timer = kind === 'device' ? deviceStatusInitTimer : aiStatusInitTimer
+  if (!timer) return
+  clearTimeout(timer)
+  if (kind === 'device') {
+    deviceStatusInitTimer = null
+    return
+  }
+  aiStatusInitTimer = null
+}
+
+function armStatusInitTimer(kind) {
+  clearStatusInitTimer(kind)
+  const setter = kind === 'device' ? deviceStatusPhase : aiStatusPhase
+  const timeoutId = setTimeout(() => {
+    if (setter.value === 'connecting') {
+      setter.value = 'offline'
+    }
+  }, STATUS_INIT_TIMEOUT_MS)
+
+  if (kind === 'device') {
+    deviceStatusInitTimer = timeoutId
+    return
+  }
+  aiStatusInitTimer = timeoutId
+}
+
 function resetMjpegState() {
   mjpegStreamReady.value = false
   mjpegErrorStreak = 0
@@ -546,6 +727,9 @@ function fetchDeviceData() {
     try {
       const data = await fetchDeviceProperties()
       properties.value = data
+      checkOverflowRisingEdge(data)
+      deviceStatusPhase.value = data.online ? 'online' : 'offline'
+      clearStatusInitTimer('device')
       lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
       addDataPoint(data)
       // 未打开设置且未在保存时：用 OneNET 查询结果持续同步表单，与云平台展示一致，打开设置即无需等待
@@ -559,6 +743,9 @@ function fetchDeviceData() {
       }
       saveDashboardCache()
     } catch (err) {
+      if (deviceStatusPhase.value !== 'connecting') {
+        deviceStatusPhase.value = 'offline'
+      }
       errorMsg.value = `设备数据获取失败：${err?.message}`
       console.error('[Dashboard] fetchDeviceProperties error:', err)
     } finally {
@@ -581,11 +768,29 @@ function fetchAiData() {
     try {
       const payload = await fetchLatestAiResult()
       aiServiceOnline.value = true
+      aiStatusPhase.value = 'online'
+      clearStatusInitTimer('ai')
       aiResult.value = normalizeAiResult(payload)
+      if (aiResult.value.ok) {
+        const category = mapAiLabelToCategory(aiResult.value.label)
+        const threshold = Number(settingsForm.value.confThreshold ?? 0.70)
+        const eventTime = aiResult.value.timestamp ? Date.parse(aiResult.value.timestamp) : Date.now()
+        if (category && aiResult.value.conf >= threshold) {
+          recordDropEvent({
+            category,
+            label: aiResult.value.label,
+            conf: aiResult.value.conf,
+            time: Number.isFinite(eventTime) ? eventTime : Date.now()
+          })
+        }
+      }
       refreshRawImage()
       saveDashboardCache()
     } catch (err) {
       aiServiceOnline.value = false
+      if (aiStatusPhase.value !== 'connecting') {
+        aiStatusPhase.value = 'offline'
+      }
       aiResult.value = { ...aiResult.value, ok: false, imageUrl: '', message: '断开' }
       console.error('[Dashboard] fetchLatestAiResult error:', err)
     } finally {
@@ -694,35 +899,12 @@ watch(mjpegStreamUrl, (next, prev) => {
   refreshRawImage(true)
 })
 
-// ── 满溢紧急通知（持续显示，需手动清运后自动消失）──
-let notificationInstance = null
-watch(() => BINS.some(b => properties.value[b.key].full), (isFull) => {
-  if (isFull) {
-    document.body.classList.add('global-alert-active')
-    if (!notificationInstance) {
-      notificationInstance = ElNotification({
-        title: '系统紧急警报',
-        message: '检测到设备部分回收仓已达到满溢阈值，请立即清运以恢复运转！',
-        type: 'error',
-        duration: 0,
-        showClose: false
-      })
-    }
-  } else {
-    document.body.classList.remove('global-alert-active')
-    if (notificationInstance) {
-      notificationInstance.close()
-      notificationInstance = null
-    }
-  }
-}, { immediate: true })
-
 // ── 即将满载预警通知（6 秒后自动消失，触发一次不重复弹出）──
 let nearFullNotifyInstance = null
 watch(() => BINS.some(b => properties.value[b.key].nearFull), (isNearFull) => {
   if (isNearFull) {
-    // 已有通知或已处于满溢状态时不重复弹出
-    if (!nearFullNotifyInstance && !BINS.some(b => properties.value[b.key].full)) {
+    // 已有通知或已处于满溢状态时不重复弹出（满溢判定与卡片一致：full 或 percent≥100）
+    if (!nearFullNotifyInstance && !BINS.some((b) => effectiveBinFull(properties.value[b.key]))) {
       nearFullNotifyInstance = ElNotification({
         title: '仓位预警',
         message: '部分回收仓重量已接近满载阈值（≥90%），请提前安排清运。',
@@ -743,7 +925,10 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', onVisibilityForMjpeg)
   // 无 MJPEG 时左侧依赖 latest-raw-image；先拉流地址再补帧
   refreshRawImage()
-  await refreshCamStreamInfo()
+  armStatusInitTimer('device')
+  armStatusInitTimer('ai')
+  fetchAll()
+  startAutoRefresh()
 
   // 无本地缓存时用推理服务默认配置；已有缓存则保留刷新前的快照
   try {
@@ -755,15 +940,14 @@ onMounted(async () => {
   } catch (err) {
     console.error('[Dashboard] init fetchConfig error:', err)
   }
-
-  fetchAll()
-  startAutoRefresh()
 })
 
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityForMjpeg)
   // 组件销毁时清除定时器，防止内存泄漏与无效请求
   stopAutoRefresh()
+  clearStatusInitTimer('device')
+  clearStatusInitTimer('ai')
 })
 
 function onRawImageError() {
@@ -915,22 +1099,6 @@ async function saveSettings() {
 }
 </script>
 
-<style>
-/* 全局边缘红光闪烁报警，由 body class 激活 */
-.global-alert-active {
-  animation: danger-pulse-border 2s infinite ease-in-out;
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-}
-
-@keyframes danger-pulse-border {
-  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239, 68, 68, 0); }
-  50% { box-shadow: inset 0 0 24px 6px rgba(239, 68, 68, 0.7); }
-}
-</style>
-
 <style scoped>
 /* ===== 根容器 ===== */
 .dashboard {
@@ -938,6 +1106,71 @@ async function saveSettings() {
   background: var(--color-page-bg);
   padding: 78px 0 40px;
   transition: background 0.25s ease;
+}
+
+/* 满溢时仅对仪表盘容器做内阴影脉冲，不操作 body，避免整页无法交互 */
+.dashboard.dashboard--overflow-alert {
+  animation: dashboard-danger-inset 2s infinite ease-in-out;
+}
+
+@keyframes dashboard-danger-inset {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: inset 0 0 32px 8px rgba(239, 68, 68, 0.38); }
+}
+
+.msg-badge-wrap {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.overflow-dialog-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--el-color-danger);
+}
+
+.overflow-dialog-title-icon {
+  font-size: 20px;
+}
+
+.overflow-dialog-alert {
+  margin-bottom: 16px;
+}
+
+.overflow-dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.overflow-dialog-item {
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+}
+
+.overflow-dialog-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overflow-dialog-item-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.overflow-dialog-item-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 
 /* ===== Header 内嵌元素（通过 slot 传入，scoped 仍生效） ===== */
@@ -994,6 +1227,58 @@ async function saveSettings() {
 /* 自动刷新开关主题色 */
 .auto-switch {
   --el-switch-on-color: var(--color-primary);
+}
+
+.header-btn {
+  --el-button-border-color: var(--color-border);
+  --el-button-hover-border-color: var(--color-border-strong);
+  --el-button-text-color: var(--color-text-secondary);
+  --el-button-hover-text-color: var(--color-text-primary);
+  --el-button-bg-color: var(--color-surface);
+  --el-button-hover-bg-color: var(--color-surface-muted);
+  --el-button-active-bg-color: var(--color-surface-muted);
+  --el-button-active-text-color: var(--color-text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.header-btn-muted {
+  --el-button-bg-color: var(--color-surface-muted);
+  --el-button-hover-bg-color: var(--color-accent-light);
+  --el-button-hover-border-color: var(--color-accent);
+  --el-button-hover-text-color: var(--color-accent);
+}
+
+.header-btn-warn {
+  --el-button-bg-color: transparent;
+  --el-button-border-color: var(--color-warning-bg);
+  --el-button-text-color: var(--color-warning);
+  --el-button-hover-bg-color: var(--color-warning-bg);
+  --el-button-hover-border-color: var(--color-warning);
+  --el-button-hover-text-color: var(--color-warning);
+}
+
+.header-btn-primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+  --el-button-text-color: #fff;
+  --el-button-hover-bg-color: var(--color-primary-soft);
+  --el-button-hover-border-color: var(--color-primary-soft);
+  --el-button-hover-text-color: #fff;
+}
+
+.form-label-meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.settings-sync-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ===== 分区标题 ===== */
