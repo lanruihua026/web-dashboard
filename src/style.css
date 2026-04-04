@@ -356,7 +356,12 @@ body {
   color: var(--color-text-secondary);
 }
 
-[data-theme='dark'] .el-overlay-dialog .el-message-box {
+/*
+ * MessageBox 的遮罩是 .el-overlay.is-message-box（内部的 .el-overlay-message-box 负责居中），
+ * 不是 el-dialog 使用的 .el-overlay-dialog。选错父级会导致暗色下背景未应用、标题/正文却仍按暗色文本着色，
+ * 整框看起来像“错位/坏掉的自定义弹窗”。
+ */
+[data-theme='dark'] .el-overlay.is-message-box .el-message-box {
   background: var(--color-surface-elevated);
   border: 1px solid var(--color-border);
   color: var(--color-text-primary);

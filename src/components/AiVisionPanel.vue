@@ -6,8 +6,8 @@
         <div class="ai-title">模型识别结果</div>
         <div class="ai-subtitle">左：ESP32-CAM 实时画面（MJPEG，无流时降级为服务端最新帧） | 右：YOLO 识别结果（含边界框）</div>
       </div>
-      <el-tag :type="aiResult.ok ? 'success' : 'info'" effect="light">
-        {{ aiResult.ok ? '检测到目标' : '暂无目标' }}
+      <el-tag :type="!aiServiceOnline ? 'info' : aiResultExpired ? 'warning' : aiResult.ok ? 'success' : 'info'" effect="light">
+        {{ !aiServiceOnline ? '服务断开' : aiResultExpired ? '结果过期' : aiResult.ok ? '检测到目标' : '暂无目标' }}
       </el-tag>
     </div>
 
@@ -16,14 +16,22 @@
       <!-- 左侧：实时流 / 降级帧 -->
       <div class="ai-panel">
         <div class="panel-label">
-          <StatusDot :status="streamStatus" />
-          {{ streamStatusText }}
+          <StatusDot :status="!deviceOnline ? 'offline' : streamStatus" />
+          {{ !deviceOnline ? '设备离线' : streamStatusText }}
           <!-- 录制指示灯 -->
           <span v-if="mjpegStreamReady" class="rec-indicator" aria-hidden="true">REC</span>
         </div>
         <div class="ai-preview ai-preview-stream ai-preview-stack">
+          <!-- 设备离线占位符 -->
+          <div v-if="!deviceOnline" class="ai-image-placeholder camera-offline">
+            <el-icon class="camera-offline-icon" :size="40"><Search /></el-icon>
+            <div>设备离线</div>
+            <div class="camera-offline-sub">与 OneNET 物联网平台通信中断</div>
+          </div>
           <!-- shimmer 加载态 -->
-          <div v-if="!mjpegStreamReady && !rawImageUrl" class="ai-image-placeholder shimmer"></div>
+          <template v-else-if="!mjpegStreamReady && !rawImageUrl">
+            <div class="ai-image-placeholder shimmer"></div>
+          </template>
           <template v-else-if="mjpegStreamUrl">
             <img
               v-if="rawImageUrl"
@@ -82,16 +90,32 @@
       <MetricCard
         label="识别结果"
         :is-offline="!aiServiceOnline"
-        :value-class="!aiServiceOnline ? 'text-danger-strong' : aiResult.ok ? 'text-success-bold ds-pop' : ''"
+        :value-class="!aiServiceOnline ? 'text-danger-strong' : aiResultExpired ? 'text-warning-bold ds-pop' : aiResult.ok ? 'text-success-bold ds-pop' : ''"
       >
-        {{ !aiServiceOnline ? '不可用' : aiResult.ok ? aiResult.label : aiResult.message || '无目标' }}
+        {{
+          !aiServiceOnline
+            ? '不可用'
+            : aiResultExpired
+              ? `${aiResult.label || aiResult.message || '无目标'}（过期）`
+              : aiResult.ok
+                ? aiResult.label
+                : aiResult.message || '无目标'
+        }}
       </MetricCard>
       <MetricCard
         label="置信度"
         :is-offline="!aiServiceOnline"
-        :value-class="!aiServiceOnline ? 'text-danger-strong' : aiResult.ok ? 'text-success-bold ds-num ds-pop' : ''"
+        :value-class="!aiServiceOnline ? 'text-danger-strong' : aiResultExpired ? 'text-warning-bold ds-num ds-pop' : aiResult.ok ? 'text-success-bold ds-num ds-pop' : ''"
       >
-        {{ !aiServiceOnline ? '不可用' : aiResult.ok ? `${(aiResult.conf * 100).toFixed(1)}%` : '--' }}
+        {{
+          !aiServiceOnline
+            ? '不可用'
+            : aiResultExpired
+              ? `${(aiResult.conf * 100).toFixed(1)}%（过期）`
+              : aiResult.ok
+                ? `${(aiResult.conf * 100).toFixed(1)}%`
+                : '--'
+        }}
       </MetricCard>
       <MetricCard
         label="更新时间"
@@ -119,13 +143,17 @@ import MetricCard from './MetricCard.vue'
 const props = defineProps({
   aiResult: { type: Object, required: true },
   aiServiceOnline: { type: Boolean, required: true },
+  aiResultExpired: { type: Boolean, default: false },
   mjpegStreamUrl: { type: String, default: '' },
   mjpegStreamReady: { type: Boolean, default: false },
   mjpegStreamDisplaySrc: { type: String, default: '' },
-  rawImageUrl: { type: String, default: '' }
+  rawImageUrl: { type: String, default: '' },
+  deviceOnline: { type: Boolean, default: true }
 })
 
 defineEmits(['stream-load', 'stream-error', 'raw-error', 'annotated-error'])
+
+const aiResultExpired = computed(() => props.aiResultExpired)
 
 const streamStatus = computed(() => {
   if (!props.mjpegStreamUrl) return 'offline'
@@ -295,6 +323,7 @@ const streamStatusText = computed(() => {
 /* 通用样式 */
 .text-danger-strong { color: var(--color-danger); font-weight: 700; }
 .text-success-bold { color: var(--color-success); font-weight: 700; }
+.text-warning-bold { color: var(--el-color-warning); font-weight: 700; }
 
 .ds-pop {
   animation: pop-in 0.3s var(--ease-spring, cubic-bezier(0.175, 0.885, 0.32, 1.275));

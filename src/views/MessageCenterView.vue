@@ -69,9 +69,23 @@
             </template>
           </el-table-column>
           <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
-          <el-table-column v-if="manageMode" label="操作" width="100" align="center" fixed="right">
+          <!-- 不使用 fixed：固定列会 transform 叠层，Popconfirm 的定位易异常 -->
+          <el-table-column v-if="manageMode" label="操作" width="120" align="center">
             <template #default="{ row }">
-              <el-button type="danger" link size="small" @click="onDeleteOne(row)">删除</el-button>
+              <el-popconfirm
+                width="280"
+                title="确定删除这条记录？"
+                confirm-button-text="删除"
+                cancel-button-text="取消"
+                confirm-button-type="danger"
+                :icon="WarningFilled"
+                icon-color="var(--el-color-danger)"
+                @confirm="removeOverflowAlert(row.id)"
+              >
+                <template #reference>
+                  <el-button type="danger" link size="small">删除</el-button>
+                </template>
+              </el-popconfirm>
             </template>
           </el-table-column>
         </el-table>
@@ -83,8 +97,8 @@
 </template>
 
 <script setup>
-import { nextTick, ref, watch } from 'vue'
-import { ArrowLeft, Bell } from '@element-plus/icons-vue'
+import { getCurrentInstance, nextTick, ref, watch } from 'vue'
+import { ArrowLeft, Bell, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 
 import AppHeader from '../components/AppHeader.vue'
@@ -96,6 +110,20 @@ import {
   removeOverflowAlert,
   removeOverflowAlerts
 } from '../store/overflowAlertStore'
+
+/** 危险操作 MessageBox：挂到 body、禁止点遮罩误触，与 Element Plus 2.x 文档一致 */
+const dangerMessageBoxOptions = {
+  type: 'warning',
+  appendTo: document.body,
+  closeOnClickModal: false,
+  closeOnPressEscape: true,
+  showClose: true,
+  autofocus: false,
+  distinguishCancelAndClose: true
+}
+
+/** 按需引入时务必传入 appContext，否则会脱离 ElConfigProvider（语言、zIndex 等与文档行为不一致） */
+const messageBoxAppContext = getCurrentInstance()?.appContext
 
 const router = useRouter()
 
@@ -138,19 +166,6 @@ async function toggleManageMode() {
   }
 }
 
-async function onDeleteOne(row) {
-  try {
-    await ElMessageBox.confirm('确定删除这条记录？', '删除', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    removeOverflowAlert(row.id)
-  } catch {
-    // 取消
-  }
-}
-
 async function onBatchDelete() {
   const rows = selectedRows.value
   if (!rows.length) return
@@ -159,10 +174,11 @@ async function onBatchDelete() {
       `确定删除已选的 ${rows.length} 条记录？此操作不可撤销。`,
       '批量删除',
       {
+        ...dangerMessageBoxOptions,
         confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
+        cancelButtonText: '取消'
+      },
+      messageBoxAppContext
     )
     removeOverflowAlerts(rows.map((r) => r.id))
     selectedRows.value = []
@@ -175,11 +191,16 @@ async function onBatchDelete() {
 
 async function onClear() {
   try {
-    await ElMessageBox.confirm('确认清空所有满溢报警记录？此操作不可撤销。', '一键清空', {
-      confirmButtonText: '清空',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
+    await ElMessageBox.confirm(
+      '确认清空所有满溢报警记录？此操作不可撤销。',
+      '一键清空',
+      {
+        ...dangerMessageBoxOptions,
+        confirmButtonText: '清空',
+        cancelButtonText: '取消'
+      },
+      messageBoxAppContext
+    )
     clearOverflowAlerts()
     selectedRows.value = []
     await nextTick()

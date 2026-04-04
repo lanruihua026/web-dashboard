@@ -199,10 +199,12 @@
         <AiVisionPanel
           :aiResult="aiResult"
           :aiServiceOnline="aiServiceOnline"
+          :aiResultExpired="aiResultExpired"
           :mjpegStreamUrl="mjpegStreamUrl"
           :mjpegStreamReady="mjpegStreamReady"
           :mjpegStreamDisplaySrc="mjpegStreamDisplaySrc"
           :rawImageUrl="rawImageUrl"
+          :deviceOnline="deviceOnline"
           @stream-load="onStreamImageLoad"
           @stream-error="onStreamImageError"
           @raw-error="onRawImageError"
@@ -443,7 +445,7 @@ function mergeCachedAiResult(raw) {
   return {
     ok: Boolean(d.ok),
     label: String(d.label ?? ''),
-    conf: Number(d.conf ?? 0),
+    conf: Number(Number(d.conf ?? 0).toFixed(2)),
     timestamp: String(d.timestamp ?? ''),
     imageUrl: String(d.imageUrl ?? ''),
     message: String(d.message ?? '尚无识别结果')
@@ -512,9 +514,12 @@ const aiStatusText = computed(() => (
   aiStatusPhase.value === 'connecting'
     ? '推理探测中'
     : aiStatusPhase.value === 'online'
-      ? '推理在线'
+      ? (aiResultExpired.value ? '结果过期' : '推理在线')
       : '推理断开'
 ))
+
+/** 是否设备在线连接；离线时应清空缓存图片 */
+const deviceOnline = computed(() => deviceStatusPhase.value === 'online')
 
 // ───────────────────────────────────────────
 // 系统设置对话框状态
@@ -536,6 +541,14 @@ const properties = ref(mergeCachedProperties(dashboardSnapshot?.properties))
 
 /** YOLO FastAPI 最新推理结果 */
 const aiResult = ref(mergeCachedAiResult(dashboardSnapshot?.aiResult))
+/** 当前 AI 结果是否已过期；只影响展示，不影响舵机或物模型状态 */
+const aiResultExpired = computed(() => {
+  if (!aiServiceOnline.value || !aiResult.value.ok || !aiResult.value.timestamp) {
+    return false
+  }
+  const ts = Date.parse(aiResult.value.timestamp)
+  return Number.isFinite(ts) && (Date.now() - ts) > AI_RESULT_STALE_MS
+})
 
 // ───────────────────────────────────────────
 // 定时器
@@ -553,6 +566,8 @@ const DEVICE_REFRESH_INTERVAL = 3000
 const AI_REFRESH_INTERVAL = 1500
 /** 摄像头流地址刷新间隔（毫秒）；与设备轮询对齐，让相机地址更快被发现 */
 const CAM_INFO_INTERVAL = 3000
+/** AI 结果过期阈值（毫秒）；与 ESP32-S3 的 stale 清理语义保持一致 */
+const AI_RESULT_STALE_MS = 8000
 /** MJPEG 异常后的延迟重连间隔；给浏览器与代理一点恢复时间，避免连续空白闪烁 */
 const MJPEG_RETRY_DELAY_MS = 1200
 /** MJPEG 连续报错达到阈值后才回退为 latest-raw，避免单次抖动直接白屏 */
@@ -599,7 +614,7 @@ function normalizeAiResult(payload) {
   return {
     ok:        Boolean(payload?.ok),
     label:     payload?.label     ?? '',
-    conf:      Number(payload?.conf ?? 0),
+    conf:      Number(Number(payload?.conf ?? 0).toFixed(2)),
     timestamp: payload?.timestamp ?? '',
     imageUrl,
     message:   payload?.message   ?? ''
@@ -746,6 +761,9 @@ function fetchDeviceData() {
       if (deviceStatusPhase.value !== 'connecting') {
         deviceStatusPhase.value = 'offline'
       }
+      // 硬件离线时清空缓存图片，避免显示过期数据
+      rawImageUrl.value = ''
+      mjpegStreamUrl.value = ''
       errorMsg.value = `设备数据获取失败：${err?.message}`
       console.error('[Dashboard] fetchDeviceProperties error:', err)
     } finally {
@@ -791,6 +809,8 @@ function fetchAiData() {
       if (aiStatusPhase.value !== 'connecting') {
         aiStatusPhase.value = 'offline'
       }
+      // AI 服务离线时清空基础图片，避免显示旧数据
+      rawImageUrl.value = ''
       aiResult.value = { ...aiResult.value, ok: false, imageUrl: '', message: '断开' }
       console.error('[Dashboard] fetchLatestAiResult error:', err)
     } finally {
