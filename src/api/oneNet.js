@@ -207,10 +207,11 @@ async function _setDeviceProperty(params) {
   if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
 }
 
-/** 向设备下发满溢重量阈值（克，整数） */
+/** 向设备下发满溢重量阈值（克，整数，合法范围 [100, 5000]） */
 export async function setOverflowThresholdOnDevice(thresholdG) {
   const n = Math.round(Number(thresholdG))
   if (!Number.isFinite(n)) throw new Error('invalid overflow threshold')
+  if (n < 100 || n > 5000) throw new Error(`overflow threshold ${n} g out of range [100, 5000]`)
   await _setDeviceProperty({ overflow_threshold_g: n })
 }
 

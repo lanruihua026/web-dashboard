@@ -1003,6 +1003,16 @@ function onAnnotatedImageError() {
 // ───────────────────────────────────────────
 
 /**
+ * 将满溢重量阈值夹紧到合法范围 [100, 5000] g，与设备端固件策略保持一致。
+ * 用于防止来自 OneNET 回写、缓存恢复或程序赋值时的越界值污染表单和下发链路。
+ */
+function clampOverflowThresholdG(n) {
+  const v = Math.round(Number(n))
+  if (!Number.isFinite(v)) return 1000
+  return Math.max(100, Math.min(5000, v))
+}
+
+/**
  * 打开设置面板：先用当前页已轮询到的 OneNET 数据立即填充（零等待），再后台拉最新。
  * 满载/置信度阈值以云平台 query-device-property 为准，与卡片数据同源实时更新。
  */
@@ -1014,7 +1024,7 @@ function openSettings() {
     settingsForm.value.confThreshold = p.aiConfThreshold
   }
   if (p.overflowThresholdG != null && Number.isFinite(p.overflowThresholdG)) {
-    settingsForm.value.overflowThresholdG = p.overflowThresholdG
+    settingsForm.value.overflowThresholdG = clampOverflowThresholdG(p.overflowThresholdG)
   }
 
   Promise.allSettled([fetchDeviceProperties(), fetchConfig()]).then(([devRes, cfgRes]) => {
@@ -1025,7 +1035,7 @@ function openSettings() {
         settingsForm.value.confThreshold = d.aiConfThreshold
       }
       if (d.overflowThresholdG != null && Number.isFinite(d.overflowThresholdG)) {
-        settingsForm.value.overflowThresholdG = d.overflowThresholdG
+        settingsForm.value.overflowThresholdG = clampOverflowThresholdG(d.overflowThresholdG)
       }
       properties.value = d
       saveDashboardCache()
@@ -1038,7 +1048,7 @@ function openSettings() {
       // auto-refresh updates that arrived while the async requests were in-flight.
       const current = properties.value
       if (current.overflowThresholdG == null || !Number.isFinite(current.overflowThresholdG)) {
-        settingsForm.value.overflowThresholdG = cfg.overflow_threshold_g ?? settingsForm.value.overflowThresholdG
+        settingsForm.value.overflowThresholdG = clampOverflowThresholdG(cfg.overflow_threshold_g ?? settingsForm.value.overflowThresholdG)
       }
       if (current.aiConfThreshold == null || !Number.isFinite(current.aiConfThreshold)) {
         settingsForm.value.confThreshold = cfg.conf_threshold ?? settingsForm.value.confThreshold
@@ -1061,7 +1071,9 @@ async function saveSettings() {
   settingsErrorMsg.value = ''
   settingsSyncMsg.value = ''
 
-  const overflowG = settingsForm.value.overflowThresholdG
+  const overflowG = clampOverflowThresholdG(settingsForm.value.overflowThresholdG)
+  // 回写表单，使 UI 与实际下发值一致（防止用户通过非 UI 途径输入越界值）
+  settingsForm.value.overflowThresholdG = overflowG
   const aiConf = parseFloat(Number(settingsForm.value.confThreshold).toFixed(2))
 
   try {

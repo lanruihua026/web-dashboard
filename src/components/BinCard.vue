@@ -24,7 +24,8 @@
         <el-icon :size="24" class="bin-icon-el"><component :is="binIcon" /></el-icon>
       </span>
       <span class="bin-name">{{ bin.name }}</span>
-      <el-tag :type="bin.tagType" size="small" class="bin-status-tag">
+      <!-- 正常态时用标签说明状态；预警/满溢时右上角已有角标，此处不再重复展示 -->
+      <el-tag v-if="bin.cardClass === 'card-normal'" :type="bin.tagType" size="small" class="bin-status-tag">
         {{ bin.statusText }}
       </el-tag>
     </div>
