@@ -3,31 +3,33 @@
   <div class="dashboard" :class="{ 'dashboard--overflow-alert': hasAnyBinFull }">
 
     <!-- ===== 顶部标题栏 ===== -->
-    <AppHeader title="电子废弃物分类回收站监控系统" tagline="智能分拣 · 实时监控" :icon="DataBoard">
+    <AppHeader title="电子废弃物分类回收监控系统" tagline="智能分拣 · 实时监控" :icon="DataBoard">
       <!-- 中部：设备状态信息 -->
       <template #center>
-        <el-tooltip content="设备状态：与 OneNET 物联网平台的通信状态" placement="bottom">
+        <el-tooltip content="设备状态：ESP32-S3是否与OneNET物联网平台成功建立连接" placement="bottom">
           <div class="status-indicator">
             <StatusDot :status="deviceStatusPhase" />
             <span class="status-text">{{ deviceStatusText }}</span>
           </div>
         </el-tooltip>
-        <el-tooltip content="AI推理：ESP32-CAM与YOLO视觉分析服务" placement="bottom">
+        <el-tooltip content="后端识别服务器是否正常工作" placement="bottom">
           <div class="status-indicator">
             <StatusDot :status="aiStatusPhase" />
             <span class="status-text">{{ aiStatusText }}</span>
           </div>
         </el-tooltip>
-        <span class="device-chip">
-          <el-icon class="device-chip-icon" :size="14"><Monitor /></el-icon>
-          Box1
-        </span>
+        <el-tooltip content="设备名称,由OneNET物联网平台设置" placement="bottom">
+          <span class="device-chip">
+            <el-icon class="device-chip-icon" :size="14"><Monitor /></el-icon>
+            Box1
+          </span>
+        </el-tooltip>
         <el-tooltip v-if="properties.lastReportTime" :content="'最后在线：' + new Date(properties.lastReportTime).toLocaleString('zh-CN')" placement="bottom">
           <span class="device-chip device-chip-muted" style="cursor: help;">
             <el-icon class="device-chip-icon" :size="14"><Clock /></el-icon>
           </span>
         </el-tooltip>
-        <el-tooltip :content="'AI 服务：' + aiServerAddr" placement="bottom">
+        <el-tooltip :content="'后端识别服务器地址：' + aiServerAddr" placement="bottom">
           <span class="device-chip device-chip-muted" style="cursor: help;">
             <el-icon class="device-chip-icon" :size="14"><Connection /></el-icon>
           </span>
@@ -174,8 +176,8 @@
 
     <!-- ===== 垃圾桶状态卡片区（手机仓 / 数码配件仓 / 电池仓）===== -->
     <div class="section-head card-row section-head-first">
-      <span class="section-label">回收仓位</span>
-      <span class="section-hint">重量与容量来自 OneNET 物模型</span>
+      <span class="section-label">仓位状态</span>
+      <span class="section-hint">重量与容量来自OneNET云平台</span>
     </div>
     <el-row :gutter="20" class="card-row">
       <!-- 遍历 binViews（包含预计算的样式与状态），每个仓位渲染一张卡片 -->
@@ -191,8 +193,8 @@
 
     <!-- ===== AI 识别结果面板 ===== -->
     <div class="section-head card-row">
-      <span class="section-label">AI 视觉识别</span>
-      <span class="section-hint">ESP32-CAM 与 YOLO 推理服务</span>
+      <span class="section-label">视觉识别区域</span>
+      <span class="section-hint">图像数据由ESP32-CAM提供</span>
     </div>
     <el-row :gutter="20" class="card-row">
       <el-col :xs="24">
@@ -272,7 +274,13 @@ import { ElMessage, ElNotification } from 'element-plus'
 // AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
 import { fetchLatestAiResult, fetchConfig, updateConfig, fetchCamInfo } from '../api/ai'
 // OneNET 平台 API：获取设备物模型属性、下发满溢阈值
-import { fetchDeviceProperties, setOverflowThresholdOnDevice, setAiConfThresholdOnDevice } from '../api/oneNet'
+import {
+  confirmDevicePropertyApplied,
+  fetchDeviceProperties,
+  isDevicePropertyTimeoutError,
+  setOverflowThresholdOnDevice,
+  setAiConfThresholdOnDevice
+} from '../api/oneNet'
 // 历史数据存储：每次成功获取属性后追加数据点
 import { addDataPoint, recordDropEvent } from '../store/historyStore'
 import { appendOverflowAlert, overflowAlertCount } from '../store/overflowAlertStore'
@@ -505,17 +513,17 @@ const deviceStatusPhase = ref('connecting')
 const aiStatusPhase = ref('connecting')
 const deviceStatusText = computed(() => (
   deviceStatusPhase.value === 'connecting'
-    ? '设备探测中'
+    ? '查询设备连接状态'
     : deviceStatusPhase.value === 'online'
-      ? '设备就绪'
+      ? '设备在线'
       : '设备离线'
 ))
 const aiStatusText = computed(() => (
   aiStatusPhase.value === 'connecting'
-    ? '推理探测中'
+    ? '查询后端服务器状态'
     : aiStatusPhase.value === 'online'
-      ? (aiResultExpired.value ? '结果过期' : '推理在线')
-      : '推理断开'
+      ? (aiResultExpired.value ? '结果过期' : '后端服务已连接')
+      : '后端服务断开'
 ))
 
 /** 是否设备在线连接；离线时应清空缓存图片 */
@@ -1061,6 +1069,40 @@ function openSettings() {
 }
 
 /**
+ * 设置属性时，若 OneNET 同步返回“设备响应超时”，则再读回一次物模型属性确认是否已生效。
+ * 这样可以区分“平台确认偏慢”和“设备实际未更新”两种情况，避免误报失败。
+ */
+async function syncDeviceSettingWithFallback({ syncMsg, verifyMsg, identifier, expectedValue, apply }) {
+  try {
+    await apply()
+    return { ok: true, confirmedByReadback: false }
+  } catch (err) {
+    if (!isDevicePropertyTimeoutError(err)) {
+      return { ok: false, confirmedByReadback: false, error: err }
+    }
+
+    settingsSyncMsg.value = verifyMsg
+    try {
+      const { matched, actualValue } = await confirmDevicePropertyApplied(identifier, expectedValue)
+      if (matched) {
+        console.info(`[Settings] ${identifier} confirmed by readback after timeout`)
+        return { ok: true, confirmedByReadback: true, timeoutError: err }
+      }
+      console.warn(`[Settings] ${identifier} readback mismatch:`, {
+        expectedValue,
+        actualValue,
+        message: err?.message
+      })
+    } catch (readErr) {
+      console.warn(`[Settings] ${identifier} readback failed:`, readErr?.message)
+    }
+
+    settingsSyncMsg.value = syncMsg
+    return { ok: false, confirmedByReadback: false, error: err }
+  }
+}
+
+/**
  * 保存设置：
  * 1. 写入 server.py config.json（识别阈值 + 满溢阈值）
  * 2. 独立下发 overflow_threshold_g 到 ESP32-S3（必须成功）
@@ -1093,22 +1135,30 @@ async function saveSettings() {
 
   // Step 2: 独立下发满溢阈值（必须成功才算完整同步）
   settingsSyncMsg.value = '正在同步满溢阈值到设备…'
-  let overflowOk = false
-  try {
-    await setOverflowThresholdOnDevice(overflowG)
-    overflowOk = true
-  } catch (err) {
-    console.warn('[Settings] setOverflowThresholdOnDevice failed:', err?.message)
+  const overflowSync = await syncDeviceSettingWithFallback({
+    syncMsg: '正在同步满溢阈值到设备…',
+    verifyMsg: '正在校验满溢阈值是否已在设备侧生效…',
+    identifier: 'overflow_threshold_g',
+    expectedValue: overflowG,
+    apply: () => setOverflowThresholdOnDevice(overflowG)
+  })
+  const overflowOk = overflowSync.ok
+  if (!overflowOk) {
+    console.warn('[Settings] setOverflowThresholdOnDevice failed:', overflowSync.error?.message)
   }
 
   // Step 3: 独立下发置信度阈值（失败仅警告，可能是物模型未更新导致）
   settingsSyncMsg.value = '正在同步置信度阈值到设备…'
-  let aiConfOk = false
-  try {
-    await setAiConfThresholdOnDevice(aiConf)
-    aiConfOk = true
-  } catch (err) {
-    console.warn('[Settings] setAiConfThresholdOnDevice failed:', err?.message)
+  const aiConfSync = await syncDeviceSettingWithFallback({
+    syncMsg: '正在同步置信度阈值到设备…',
+    verifyMsg: '正在校验置信度阈值是否已在设备侧生效…',
+    identifier: 'ai_conf_threshold',
+    expectedValue: aiConf,
+    apply: () => setAiConfThresholdOnDevice(aiConf)
+  })
+  const aiConfOk = aiConfSync.ok
+  if (!aiConfOk) {
+    console.warn('[Settings] setAiConfThresholdOnDevice failed:', aiConfSync.error?.message)
   }
 
   settingsSyncMsg.value = ''
@@ -1119,8 +1169,14 @@ async function saveSettings() {
   // 保存完成后立即强制全量刷新，让页面显示最新状态，不等下一个轮询周期
   fetchAll(true)
 
+  const recoveredByReadback = overflowSync.confirmedByReadback || aiConfSync.confirmedByReadback
+
   if (overflowOk && aiConfOk) {
-    ElMessage.success('设置已保存并同步到推理服务与设备')
+    ElMessage.success(
+      recoveredByReadback
+        ? '设置已保存并同步到设备（平台确认曾超时，已通过读回校验）'
+        : '设置已保存并同步到推理服务与设备'
+    )
   } else if (!overflowOk && !aiConfOk) {
     ElMessage.warning('已保存到推理服务，但两项阈值均未同步到设备（设备可能离线）')
   } else if (!overflowOk) {

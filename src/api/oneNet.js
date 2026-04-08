@@ -72,6 +72,26 @@ const http = axios.create({
   timeout: 10000  // 超时 10 秒，超时后 Axios 抛出 AxiosError
 })
 
+const DEVICE_TIMEOUT_MSG_RE = /设备响应超时/
+const DEVICE_PROPERTY_FIELD_MAP = {
+  overflow_threshold_g: 'overflowThresholdG',
+  ai_conf_threshold: 'aiConfThreshold'
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isSameDevicePropertyValue(identifier, actualValue, expectedValue) {
+  if (!Number.isFinite(actualValue) || !Number.isFinite(expectedValue)) {
+    return false
+  }
+  if (identifier === 'ai_conf_threshold') {
+    return Math.abs(actualValue - expectedValue) < 0.005
+  }
+  return actualValue === expectedValue
+}
+
 
 // ===== 公共鉴权头生成 =====
 /**
@@ -220,4 +240,32 @@ export async function setAiConfThresholdOnDevice(aiConf) {
   const n = parseFloat(Number(aiConf).toFixed(2))
   if (!Number.isFinite(n)) throw new Error('invalid ai_conf threshold')
   await _setDeviceProperty({ ai_conf_threshold: n })
+}
+
+/** 判断属性下发失败是否属于“平台等待设备确认超时”。 */
+export function isDevicePropertyTimeoutError(err) {
+  const msg = String(err?.message ?? '')
+  return DEVICE_TIMEOUT_MSG_RE.test(msg)
+}
+
+/**
+ * 在 OneNET 同步返回超时时，稍后读回设备属性做兜底确认。
+ * 若云端物模型已更新到目标值，则说明设备已生效，只是平台同步确认偏慢。
+ */
+export async function confirmDevicePropertyApplied(identifier, expectedValue, options = {}) {
+  const field = DEVICE_PROPERTY_FIELD_MAP[identifier]
+  if (!field) throw new Error(`unknown device property identifier: ${identifier}`)
+
+  const delayMs = Math.max(0, Number(options.delayMs ?? 1200))
+  if (delayMs > 0) {
+    await sleep(delayMs)
+  }
+
+  const props = await fetchDeviceProperties()
+  const actualValue = Number(props[field])
+  return {
+    matched: isSameDevicePropertyValue(identifier, actualValue, Number(expectedValue)),
+    actualValue,
+    props
+  }
 }

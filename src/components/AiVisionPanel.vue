@@ -4,7 +4,6 @@
     <div class="ai-header">
       <div>
         <div class="ai-title">模型识别结果</div>
-        <div class="ai-subtitle">左：ESP32-CAM 实时画面（MJPEG，无流时降级为服务端最新帧） | 右：YOLO 识别结果（含边界框）</div>
       </div>
       <el-tag :type="!aiServiceOnline ? 'info' : aiResultExpired ? 'warning' : aiResult.ok ? 'success' : 'info'" effect="light">
         {{ !aiServiceOnline ? '服务断开' : aiResultExpired ? '结果过期' : aiResult.ok ? '检测到目标' : '暂无目标' }}
@@ -65,7 +64,7 @@
       <div class="ai-panel">
         <div class="panel-label">
           <StatusDot status="result" />
-          识别结果
+          识别结果展示
         </div>
         <div class="ai-preview">
           <div v-if="!aiServiceOnline" class="ai-image-placeholder camera-offline">
@@ -161,8 +160,8 @@ const streamStatus = computed(() => {
 })
 
 const streamStatusText = computed(() => {
-  if (!props.mjpegStreamUrl) return '降级帧'
-  return props.mjpegStreamReady ? '实时流' : '连接中…'
+  if (!props.mjpegStreamUrl) return '画面不可用'
+  return props.mjpegStreamReady ? '实时采集画面' : '画面加载中…'
 })
 </script>
 
