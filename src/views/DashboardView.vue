@@ -724,14 +724,14 @@ async function refreshCamStreamInfo() {
       return
     }
     camInfoEmptyStreak++
-    if (camInfoEmptyStreak >= CAM_INFO_CLEAR_THRESHOLD && !mjpegStreamUrl.value) {
+    if (camInfoEmptyStreak >= CAM_INFO_CLEAR_THRESHOLD && mjpegStreamUrl.value) {
       mjpegStreamUrl.value = ''
       refreshRawImage(true)
     }
   } catch (err) {
     camInfoErrorStreak++
     console.warn('[Dashboard] fetchCamInfo error:', err)
-    if (camInfoErrorStreak >= CAM_INFO_CLEAR_THRESHOLD && !mjpegStreamUrl.value) {
+    if (camInfoErrorStreak >= CAM_INFO_CLEAR_THRESHOLD && mjpegStreamUrl.value) {
       mjpegStreamUrl.value = ''
       refreshRawImage(true)
     }
@@ -754,7 +754,10 @@ function fetchDeviceData() {
       deviceStatusPhase.value = data.online ? 'online' : 'offline'
       clearStatusInitTimer('device')
       lastUpdateTime.value = new Date().toLocaleTimeString('zh-CN')
-      addDataPoint(data)
+      // OneNET 设备离线时返回的是最近一次上报值；不应继续写入历史曲线，否则会把离线期伪装成正常采样。
+      if (data.online) {
+        addDataPoint(data)
+      }
       // 未打开设置且未在保存时：用 OneNET 查询结果持续同步表单，与云平台展示一致，打开设置即无需等待
       if (!settingsVisible.value && !settingsSaving.value) {
         if (data.aiConfThreshold != null && Number.isFinite(data.aiConfThreshold)) {
@@ -1073,32 +1076,53 @@ function openSettings() {
  * 这样可以区分“平台确认偏慢”和“设备实际未更新”两种情况，避免误报失败。
  */
 async function syncDeviceSettingWithFallback({ syncMsg, verifyMsg, identifier, expectedValue, apply }) {
+  const verifyApplied = async (sourceError = null) => {
+    settingsSyncMsg.value = verifyMsg
+    const attempts = [
+      { delayMs: 800 },
+      { delayMs: 1600 },
+      { delayMs: 2600 }
+    ]
+
+    let lastMismatch = null
+    for (const attempt of attempts) {
+      try {
+        const { matched, actualValue } = await confirmDevicePropertyApplied(identifier, expectedValue, attempt)
+        if (matched) {
+          return { ok: true, confirmedByReadback: true, timeoutError: sourceError }
+        }
+        lastMismatch = actualValue
+      } catch (readErr) {
+        console.warn(`[Settings] ${identifier} readback failed:`, readErr?.message)
+      }
+    }
+
+    return {
+      ok: false,
+      confirmedByReadback: false,
+      error: sourceError ?? new Error(`${identifier} readback mismatch`),
+      actualValue: lastMismatch
+    }
+  }
+
   try {
     await apply()
-    return { ok: true, confirmedByReadback: false }
+    return await verifyApplied()
   } catch (err) {
     if (!isDevicePropertyTimeoutError(err)) {
       return { ok: false, confirmedByReadback: false, error: err }
     }
 
-    settingsSyncMsg.value = verifyMsg
-    try {
-      const { matched, actualValue } = await confirmDevicePropertyApplied(identifier, expectedValue)
-      if (matched) {
-        console.info(`[Settings] ${identifier} confirmed by readback after timeout`)
-        return { ok: true, confirmedByReadback: true, timeoutError: err }
-      }
-      console.warn(`[Settings] ${identifier} readback mismatch:`, {
+    const verified = await verifyApplied(err)
+    if (!verified.ok) {
+      console.warn(`[Settings] ${identifier} readback mismatch after timeout:`, {
         expectedValue,
-        actualValue,
+        actualValue: verified.actualValue,
         message: err?.message
       })
-    } catch (readErr) {
-      console.warn(`[Settings] ${identifier} readback failed:`, readErr?.message)
     }
-
     settingsSyncMsg.value = syncMsg
-    return { ok: false, confirmedByReadback: false, error: err }
+    return verified
   }
 }
 

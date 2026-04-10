@@ -217,14 +217,24 @@ export async function fetchDeviceProperties() {
   return result
 }
 
-// 注意：params 为扁平结构（直接用 JSON number），不要用 { identifier: { value: x } }。
+async function postSetDeviceProperty(params) {
+  const headers = await authHeader()
+  const body = {
+    product_id: ONENET_PRODUCT_ID,
+    device_name: ONENET_DEVICE_NAME,
+    params
+  }
+  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
+  if (data.code !== 0) {
+    throw new Error(data.msg || `OneNET error ${data.code}`)
+  }
+}
 
 /** 向设备下发单个属性（内部公共实现） */
 async function _setDeviceProperty(params) {
-  const headers = await authHeader()
-  const body = { product_id: ONENET_PRODUCT_ID, device_name: ONENET_DEVICE_NAME, params }
-  const { data } = await http.post('/thingmodel/set-device-property', body, { headers })
-  if (data.code !== 0) throw new Error(data.msg || `OneNET error ${data.code}`)
+  // 实测 OneNET set-device-property 需要扁平 number 值；
+  // 改成 { value: x } 会被平台直接拒绝，导致云端和设备都不同步。
+  await postSetDeviceProperty(params)
 }
 
 /** 向设备下发满溢重量阈值（克，整数，合法范围 [100, 5000]） */
@@ -239,6 +249,7 @@ export async function setOverflowThresholdOnDevice(thresholdG) {
 export async function setAiConfThresholdOnDevice(aiConf) {
   const n = parseFloat(Number(aiConf).toFixed(2))
   if (!Number.isFinite(n)) throw new Error('invalid ai_conf threshold')
+  if (n < 0 || n > 1) throw new Error(`ai_conf threshold ${n} out of range [0, 1]`)
   await _setDeviceProperty({ ai_conf_threshold: n })
 }
 

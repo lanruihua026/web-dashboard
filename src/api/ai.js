@@ -32,5 +32,8 @@ export async function fetchConfig() {
  */
 export async function updateConfig(payload) {
   const { data } = await http.post('/set-config', payload)
+  if (data?.ok !== true) {
+    throw new Error(data?.detail || data?.msg || 'save_config_failed')
+  }
   return data
 }
