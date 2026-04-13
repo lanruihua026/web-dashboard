@@ -16,6 +16,26 @@ export const BINS_CHART = [
   { key: 'battery', name: '电池仓', color: '#d97706' }
 ]
 
+function normalizeOverflowThresholdG(value) {
+  const threshold = Math.round(Number(value))
+  if (!Number.isFinite(threshold) || threshold <= 0) return 1000
+  return threshold
+}
+
+function resolveChartMax(data, bins, overflowThresholdG) {
+  const threshold = normalizeOverflowThresholdG(overflowThresholdG)
+  const maxValue = data.reduce((max, point) => {
+    const localMax = bins.reduce((binMax, bin) => {
+      const value = Number(point?.[bin.key] ?? 0)
+      return Number.isFinite(value) ? Math.max(binMax, value) : binMax
+    }, 0)
+    return Math.max(max, localMax)
+  }, 0)
+
+  const reference = Math.max(threshold, maxValue)
+  return Math.max(200, Math.ceil(reference * 1.1 / 100) * 100)
+}
+
 /**
  * 根据当前主题返回图表配色方案
  * @param {import('vue').Ref<boolean>} isDarkMode
@@ -49,7 +69,10 @@ export function useChartTheme(isDarkMode) {
 /**
  * 构建趋势折线图配置
  */
-export function buildTrendOption(data, palette, bins = BINS_CHART) {
+export function buildTrendOption(data, palette, bins = BINS_CHART, overflowThresholdG = 1000) {
+  const threshold = normalizeOverflowThresholdG(overflowThresholdG)
+  const axisMax = resolveChartMax(data, bins, threshold)
+
   return {
     backgroundColor: 'transparent',
     tooltip: {
@@ -97,15 +120,15 @@ export function buildTrendOption(data, palette, bins = BINS_CHART) {
       name: '重量 (g)',
       nameTextStyle: { color: palette.mutedText, fontSize: 12 },
       min: 0,
-      max: 1100,
+      max: axisMax,
       axisLine: { show: false },
       axisLabel: { color: palette.mutedText, fontSize: 12 },
       splitLine: { lineStyle: { color: palette.splitLine } },
       markLine: {
         silent: true,
-        data: [{ yAxis: 1000, name: '满仓线' }],
+        data: [{ yAxis: threshold, name: '满仓线' }],
         lineStyle: { color: '#ef4444', type: 'dashed', width: 1.5 },
-        label: { formatter: '满仓 1000g', color: '#ef4444', fontSize: 11, position: 'end' }
+        label: { formatter: `满仓 ${threshold}g`, color: '#ef4444', fontSize: 11, position: 'end' }
       }
     },
     series: bins.map((bin) => ({
@@ -129,9 +152,11 @@ export function buildTrendOption(data, palette, bins = BINS_CHART) {
 /**
  * 构建当前对比柱状图配置
  */
-export function buildBarOption(data, palette, bins = BINS_CHART) {
+export function buildBarOption(data, palette, bins = BINS_CHART, overflowThresholdG = 1000) {
   if (!data.length) return {}
   const latest = data[data.length - 1]
+  const threshold = normalizeOverflowThresholdG(overflowThresholdG)
+  const axisMax = resolveChartMax(data, bins, threshold)
 
   return {
     backgroundColor: 'transparent',
@@ -142,7 +167,7 @@ export function buildBarOption(data, palette, bins = BINS_CHART) {
       textStyle: { color: palette.tooltipText, fontSize: 13 },
       formatter(params) {
         const p = params[0]
-        const pct = ((p.value / 1000) * 100).toFixed(1)
+        const pct = ((p.value / threshold) * 100).toFixed(1)
         return `<div style="display:flex;align-items:center;gap:8px">
           <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${p.color}"></span>
           <span style="color:${palette.secondaryText}">${p.name}</span>
@@ -163,7 +188,7 @@ export function buildBarOption(data, palette, bins = BINS_CHART) {
       name: '重量 (g)',
       nameTextStyle: { color: palette.mutedText, fontSize: 12 },
       min: 0,
-      max: 1100,
+      max: axisMax,
       axisLine: { show: false },
       axisLabel: { color: palette.mutedText, fontSize: 12 },
       splitLine: { lineStyle: { color: palette.splitLine } }
@@ -189,14 +214,14 @@ export function buildBarOption(data, palette, bins = BINS_CHART) {
           color: palette.secondaryText,
           fontSize: 12,
           formatter(p) {
-            return `${p.value} g\n${((p.value / 1000) * 100).toFixed(1)}%`
+            return `${p.value} g\n${((p.value / threshold) * 100).toFixed(1)}%`
           }
         },
         markLine: {
           silent: true,
-          data: [{ yAxis: 1000 }],
+          data: [{ yAxis: threshold }],
           lineStyle: { color: '#ef4444', type: 'dashed', width: 1.5 },
-          label: { formatter: '满仓', color: '#ef4444', fontSize: 11 }
+          label: { formatter: `满仓 ${threshold}g`, color: '#ef4444', fontSize: 11 }
         }
       }
     ]

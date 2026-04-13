@@ -7,7 +7,7 @@
         </el-button>
       </template>
       <template #right>
-        <span class="record-count">共 {{ overflowAlerts.length }} 条记录</span>
+        <span class="record-count">显示 {{ filteredAlerts.length }} / {{ overflowAlerts.length }} 条</span>
         <ThemeToggle />
         <el-button
           size="small"
@@ -35,10 +35,45 @@
       </div>
 
       <el-card v-else class="table-card" shadow="never">
+        <div class="filter-panel">
+          <div class="filter-panel-head">
+            <div class="filter-panel-title">
+              <span>消息筛选</span>
+              <span class="filter-panel-subtitle">按时间、仓格和关键字快速定位报警记录</span>
+            </div>
+            <div class="filter-badges">
+              <span class="filter-badge">{{ activeTimeLabel }}</span>
+              <span class="filter-badge">{{ activeBinLabel }}</span>
+              <span class="filter-badge">关键词：{{ filters.keyword.trim() || '全部' }}</span>
+            </div>
+          </div>
+
+          <div class="filter-grid">
+            <el-select v-model="filters.minutes" class="filter-select" placeholder="时间范围">
+              <el-option v-for="item in TIME_OPTIONS" :key="String(item.value)" :label="item.label" :value="item.value" />
+            </el-select>
+
+            <el-select v-model="filters.binKey" clearable class="filter-select" placeholder="筛选仓格">
+              <el-option label="全部仓格" value="" />
+              <el-option v-for="item in BIN_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+
+            <el-input
+              v-model="filters.keyword"
+              clearable
+              class="filter-input"
+              placeholder="搜索摘要或仓格名称"
+            />
+
+            <el-button plain class="reset-btn" @click="resetFilters">重置筛选</el-button>
+          </div>
+        </div>
+
         <div v-if="manageMode" class="table-toolbar">
           <span class="toolbar-meta">
             已选 <strong>{{ selectedRows.length }}</strong> 条
           </span>
+          <span class="toolbar-meta">当前筛选结果 <strong>{{ filteredAlerts.length }}</strong> 条</span>
           <el-button
             size="small"
             type="danger"
@@ -49,9 +84,15 @@
             批量删除
           </el-button>
         </div>
+
+        <div v-if="filteredAlerts.length === 0" class="filtered-empty-state">
+          当前筛选条件下暂无消息记录，请调整筛选条件后重试。
+        </div>
+
         <el-table
+          v-else
           ref="tableRef"
-          :data="overflowAlerts"
+          :data="filteredAlerts"
           row-key="id"
           stripe
           style="width: 100%"
@@ -63,13 +104,12 @@
               {{ formatTime(row.time) }}
             </template>
           </el-table-column>
-          <el-table-column label="涉及仓格" min-width="160">
+          <el-table-column label="涉及仓格" min-width="180">
             <template #default="{ row }">
               {{ formatBins(row.bins) }}
             </template>
           </el-table-column>
-          <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
-          <!-- 不使用 fixed：固定列会 transform 叠层，Popconfirm 的定位易异常 -->
+          <el-table-column prop="summary" label="摘要" min-width="260" show-overflow-tooltip />
           <el-table-column v-if="manageMode" label="操作" width="120" align="center">
             <template #default="{ row }">
               <el-popconfirm
@@ -97,7 +137,8 @@
 </template>
 
 <script setup>
-import { getCurrentInstance, nextTick, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ArrowLeft, Bell, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 
@@ -111,7 +152,27 @@ import {
   removeOverflowAlerts
 } from '../store/overflowAlertStore'
 
-/** 危险操作 MessageBox：挂到 body、禁止点遮罩误触，与 Element Plus 2.x 文档一致 */
+const router = useRouter()
+
+const TIME_OPTIONS = [
+  { label: '24 小时内', value: 24 * 60 },
+  { label: '近 3 天', value: 3 * 24 * 60 },
+  { label: '近 7 天', value: 7 * 24 * 60 },
+  { label: '全部时间', value: null }
+]
+
+const BIN_OPTIONS = [
+  { label: '手机仓', value: 'phone' },
+  { label: '数码配件仓', value: 'mouse' },
+  { label: '电池仓', value: 'battery' }
+]
+
+const filters = reactive({
+  minutes: null,
+  binKey: '',
+  keyword: ''
+})
+
 const dangerMessageBoxOptions = {
   type: 'warning',
   appendTo: document.body,
@@ -122,12 +183,44 @@ const dangerMessageBoxOptions = {
   distinguishCancelAndClose: true
 }
 
-/** 按需引入时务必传入 appContext，否则会脱离 ElConfigProvider（语言、zIndex 等与文档行为不一致） */
 const messageBoxAppContext = getCurrentInstance()?.appContext
 
-const router = useRouter()
-
 const manageMode = ref(false)
+const tableRef = ref(null)
+const selectedRows = ref([])
+
+const activeTimeLabel = computed(() => {
+  const matched = TIME_OPTIONS.find((item) => item.value === filters.minutes)
+  return matched?.label ?? '全部时间'
+})
+
+const activeBinLabel = computed(() => {
+  const matched = BIN_OPTIONS.find((item) => item.value === filters.binKey)
+  return matched?.label ?? '全部仓格'
+})
+
+const filteredAlerts = computed(() => {
+  const keyword = filters.keyword.trim().toLowerCase()
+  const cutoff = filters.minutes ? Date.now() - filters.minutes * 60 * 1000 : null
+
+  return overflowAlerts.value.filter((alert) => {
+    if (cutoff && Number(alert.time) < cutoff) return false
+
+    if (filters.binKey) {
+      const hasBin = Array.isArray(alert.bins) && alert.bins.some((bin) => bin.key === filters.binKey)
+      if (!hasBin) return false
+    }
+
+    if (!keyword) return true
+
+    const summary = String(alert.summary ?? '').toLowerCase()
+    const binText = Array.isArray(alert.bins)
+      ? alert.bins.map((bin) => `${bin.name} ${bin.key}`).join(' ').toLowerCase()
+      : ''
+
+    return summary.includes(keyword) || binText.includes(keyword)
+  })
+})
 
 watch(
   () => overflowAlerts.value.length,
@@ -138,21 +231,36 @@ watch(
     }
   }
 )
-const tableRef = ref(null)
-const selectedRows = ref([])
 
-function formatTime(t) {
-  if (!Number.isFinite(Number(t))) return '—'
-  return new Date(t).toLocaleString('zh-CN', { hour12: false })
+watch(
+  () => [filters.minutes, filters.binKey, filters.keyword],
+  async () => {
+    selectedRows.value = []
+    await nextTick()
+    tableRef.value?.clearSelection()
+  }
+)
+
+function formatTime(time) {
+  if (!Number.isFinite(Number(time))) return '—'
+  return new Date(time).toLocaleString('zh-CN', { hour12: false })
 }
 
 function formatBins(bins) {
   if (!Array.isArray(bins) || !bins.length) return '—'
-  return bins.map((b) => `${b.name}${Number.isFinite(b.weight) ? `（${b.weight} g）` : ''}`).join('、')
+  return bins
+    .map((bin) => `${bin.name}${Number.isFinite(bin.weight) ? `（${bin.weight} g）` : ''}`)
+    .join('、')
 }
 
 function onSelectionChange(rows) {
   selectedRows.value = rows
+}
+
+function resetFilters() {
+  filters.minutes = null
+  filters.binKey = ''
+  filters.keyword = ''
 }
 
 async function toggleManageMode() {
@@ -161,14 +269,16 @@ async function toggleManageMode() {
     selectedRows.value = []
     await nextTick()
     tableRef.value?.clearSelection()
-  } else {
-    manageMode.value = true
+    return
   }
+
+  manageMode.value = true
 }
 
 async function onBatchDelete() {
   const rows = selectedRows.value
   if (!rows.length) return
+
   try {
     await ElMessageBox.confirm(
       `确定删除已选的 ${rows.length} 条记录？此操作不可撤销。`,
@@ -180,12 +290,13 @@ async function onBatchDelete() {
       },
       messageBoxAppContext
     )
-    removeOverflowAlerts(rows.map((r) => r.id))
+
+    removeOverflowAlerts(rows.map((row) => row.id))
     selectedRows.value = []
     await nextTick()
     tableRef.value?.clearSelection()
   } catch {
-    // 取消
+    // 用户取消
   }
 }
 
@@ -201,12 +312,13 @@ async function onClear() {
       },
       messageBoxAppContext
     )
+
     clearOverflowAlerts()
     selectedRows.value = []
     await nextTick()
     tableRef.value?.clearSelection()
   } catch {
-    // 取消
+    // 用户取消
   }
 }
 </script>
@@ -223,7 +335,7 @@ async function onClear() {
 .content {
   padding-top: 24px;
   padding-bottom: 8px;
-  max-width: 1100px;
+  max-width: 1180px;
   margin: 0 auto;
   padding-left: var(--space-7, 28px);
   padding-right: var(--space-7, 28px);
@@ -238,7 +350,8 @@ async function onClear() {
   --el-button-hover-text-color: var(--color-accent);
 }
 
-.clear-btn {
+.clear-btn,
+.reset-btn {
   --el-button-bg-color: transparent;
 }
 
@@ -282,6 +395,66 @@ async function onClear() {
   background: var(--color-surface);
 }
 
+.filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.filter-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-panel-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
+.filter-panel-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+}
+
+.filter-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.filter-select,
+.filter-input {
+  width: 100%;
+}
+
 .table-toolbar {
   display: flex;
   align-items: center;
@@ -300,5 +473,29 @@ async function onClear() {
 .toolbar-meta strong {
   color: var(--color-text-primary);
   font-weight: 600;
+}
+
+.filtered-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+}
+
+@media (max-width: 980px) {
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
