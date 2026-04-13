@@ -20,6 +20,8 @@
     </div>
     <!-- 底部渐变彩色细线 -->
     <div class="header-accent-line" aria-hidden="true"></div>
+    <!-- 极细扫描线 -->
+    <div class="header-scan-line" aria-hidden="true"></div>
   </header>
 </template>
 
@@ -39,29 +41,43 @@ defineProps({
   flex-wrap: wrap;
   gap: 12px;
   padding: 0 var(--space-7, 28px);
-  min-height: 64px;
-  background: var(--color-surface-glass, rgba(255,255,255,0.72));
-  border-bottom: 1px solid var(--color-surface-glass-border, rgba(255,255,255,0.35));
-  box-shadow: var(--shadow-lg, var(--color-shadow));
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  min-height: 72px;
+  background: var(--color-surface-glass);
+  border-bottom: 1px solid var(--color-surface-glass-border);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 100;
+  transition: background 0.3s ease, border 0.3s ease;
 }
 
 /* 底部渐变彩色细线 */
 .header-accent-line {
   position: absolute;
-  bottom: -2px;
+  bottom: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 2px;
   background: var(--gradient-accent-line);
   background-size: 200% 100%;
-  animation: accent-line-shift 6s linear infinite;
+  animation: accent-line-shift 8s linear infinite;
+  opacity: 0.8;
+}
+
+/* 扫描线效果 */
+.header-scan-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 15%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  animation: scan-line 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: 5;
 }
 
 @keyframes accent-line-shift {
@@ -78,45 +94,46 @@ defineProps({
 .brand-block {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
 .brand-icon-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md, 10px);
-  color: var(--color-primary);
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  transition: transform var(--transition-base, 250ms ease), box-shadow var(--transition-base, 250ms ease);
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-md, 12px);
+  color: var(--color-on-primary);
+  background: var(--gradient-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  animation: float-subtle 4s ease-in-out infinite;
 }
 
 .brand-icon-wrap:hover {
-  transform: scale(1.05);
-  box-shadow: var(--shadow-md);
-}
-
-[data-theme='dark'] .brand-icon-wrap {
-  color: var(--color-accent);
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
 }
 
 .brand-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .title {
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
   color: var(--color-text-primary);
-  letter-spacing: 0.01em;
-  line-height: 1.25;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
   white-space: nowrap;
+  background: linear-gradient(to bottom, var(--color-text-primary), var(--color-text-secondary));
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 .title-tagline {

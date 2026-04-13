@@ -1,37 +1,30 @@
 <template>
-  <el-card class="ai-card" shadow="hover">
-    <!-- 面板头 -->
-    <div class="ai-header">
-      <div>
-        <div class="ai-title">模型识别结果</div>
-      </div>
-      <el-tag :type="!aiServiceOnline ? 'info' : aiResultExpired ? 'warning' : aiResult.ok ? 'success' : 'info'" effect="light">
-        {{ !aiServiceOnline ? '服务断开' : aiResultExpired ? '结果过期' : aiResult.ok ? '检测到目标' : '暂无目标' }}
-      </el-tag>
-    </div>
-
-    <!-- 双列图像区 -->
+  <el-card class="ai-card" shadow="always">
     <div class="ai-dual-panel">
       <!-- 左侧：实时流 / 降级帧 -->
       <div class="ai-panel">
         <div class="panel-label">
           <StatusDot :status="!deviceOnline ? 'offline' : streamStatus" />
-          {{ !deviceOnline ? '设备离线' : streamStatusText }}
+          <span class="label-text">{{ !deviceOnline ? '设备已离线' : streamStatusText }}</span>
           <!-- 录制指示灯 -->
-          <span v-if="mjpegStreamReady" class="rec-indicator" aria-hidden="true">REC</span>
+          <div v-if="mjpegStreamReady" class="live-indicator">
+            <span class="pulse-dot-red"></span>
+            LIVE
+          </div>
         </div>
         <div class="ai-preview ai-preview-stream ai-preview-stack">
           <!-- 设备离线占位符 -->
           <div v-if="!deviceOnline" class="ai-image-placeholder camera-offline">
-            <el-icon class="camera-offline-icon" :size="40"><Search /></el-icon>
-            <div>设备离线</div>
-            <div class="camera-offline-sub">与 OneNET 物联网平台通信中断</div>
+            <el-icon class="camera-offline-icon" :size="48"><Search /></el-icon>
+            <div class="placeholder-main">核心设备通信中断</div>
+            <div class="placeholder-sub">请检查 ESP32-S3 网络状态</div>
           </div>
           <!-- shimmer 加载态 -->
           <template v-else-if="!mjpegStreamReady && !rawImageUrl">
             <div class="ai-image-placeholder shimmer"></div>
           </template>
           <template v-else-if="mjpegStreamUrl">
+            <!-- 堆叠模式：Fallback 底图 + MJPEG 实时流 -->
             <img
               v-if="rawImageUrl"
               :src="rawImageUrl"
@@ -55,7 +48,7 @@
               class="ai-image"
               @error="$emit('raw-error')"
             />
-            <div v-else class="ai-image-placeholder">暂无画面</div>
+            <div v-else class="ai-image-placeholder">等待画面输入...</div>
           </template>
         </div>
       </div>
@@ -64,13 +57,16 @@
       <div class="ai-panel">
         <div class="panel-label">
           <StatusDot status="result" />
-          识别结果展示
+          <span class="label-text">YOLO V8 推理结果展示</span>
         </div>
-        <div class="ai-preview">
+        <div class="ai-preview ai-preview-result">
+          <!-- 结果扫描线 -->
+          <div v-if="aiResult.imageUrl" class="ai-scan-bar ai-scan-bar-result"></div>
+          
           <div v-if="!aiServiceOnline" class="ai-image-placeholder camera-offline">
-            <el-icon class="camera-offline-icon" :size="40"><Search /></el-icon>
-            <div>识别服务不可用</div>
-            <div class="camera-offline-sub">YOLO FastAPI 已断开连接</div>
+            <el-icon class="camera-offline-icon" :size="48"><Search /></el-icon>
+            <div class="placeholder-main">推理服务不可用</div>
+            <div class="placeholder-sub">YOLO FastAPI 进程未响应</div>
           </div>
           <img
             v-else-if="aiResult.imageUrl"
@@ -79,65 +75,44 @@
             class="ai-image"
             @error="$emit('annotated-error')"
           />
-          <div v-else class="ai-image-placeholder">暂无识别图片</div>
+          <div v-else class="ai-image-placeholder placeholder-empty">
+             <div class="empty-state">
+               <el-icon :size="32"><Monitor /></el-icon>
+               <span>等待检测结果</span>
+             </div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 推理元数据行 -->
-    <div class="ai-metadata-row">
-      <MetricCard
-        label="识别结果"
-        :is-offline="!aiServiceOnline"
-        :value-class="!aiServiceOnline ? 'text-danger-strong' : aiResultExpired ? 'text-warning-bold ds-pop' : aiResult.ok ? 'text-success-bold ds-pop' : ''"
-      >
-        {{
-          !aiServiceOnline
-            ? '不可用'
-            : aiResultExpired
-              ? `${aiResult.label || aiResult.message || '无目标'}（过期）`
-              : aiResult.ok
-                ? aiResult.label
-                : aiResult.message || '无目标'
-        }}
-      </MetricCard>
-      <MetricCard
-        label="置信度"
-        :is-offline="!aiServiceOnline"
-        :value-class="!aiServiceOnline ? 'text-danger-strong' : aiResultExpired ? 'text-warning-bold ds-num ds-pop' : aiResult.ok ? 'text-success-bold ds-num ds-pop' : ''"
-      >
-        {{
-          !aiServiceOnline
-            ? '不可用'
-            : aiResultExpired
-              ? `${(aiResult.conf * 100).toFixed(1)}%（过期）`
-              : aiResult.ok
-                ? `${(aiResult.conf * 100).toFixed(1)}%`
-                : '--'
-        }}
-      </MetricCard>
-      <MetricCard
-        label="更新时间"
-        :is-offline="!aiServiceOnline"
-        value-class="ds-num"
-      >
-        {{ aiResult.timestamp ? new Date(aiResult.timestamp).toLocaleString('zh-CN') : '尚无记录' }}
-      </MetricCard>
-      <MetricCard
-        label="服务端状态"
-        :is-offline="!aiServiceOnline"
-        :value-class="aiServiceOnline ? 'text-success-bold' : 'text-danger-strong ds-pulse-text'"
-      >
-        {{ aiServiceOnline ? '正常' : '断开' }}
-      </MetricCard>
+    <div class="ai-metadata-row-modern">
+      <div class="meta-item">
+        <div class="meta-label">检测分类</div>
+        <div class="meta-value" :class="metaResultClass">{{ metaResultText }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">置信度指数</div>
+        <div class="meta-value ds-num" :class="metaResultClass">{{ metaConfText }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">推理时间轴</div>
+        <div class="meta-value ds-num">{{ metaTimeText }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">服务端吞吐</div>
+        <div class="meta-value" :class="aiServiceOnline ? 'text-success' : 'text-danger'">
+          {{ aiServiceOnline ? 'STABLE' : 'OFFLINE' }}
+        </div>
+      </div>
     </div>
   </el-card>
 </template>
 
 <script setup>
-import { Search } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { Search, Monitor } from '@element-plus/icons-vue'
 import StatusDot from './StatusDot.vue'
-import MetricCard from './MetricCard.vue'
 
 const props = defineProps({
   aiResult: { type: Object, required: true },
@@ -152,201 +127,212 @@ const props = defineProps({
 
 defineEmits(['stream-load', 'stream-error', 'raw-error', 'annotated-error'])
 
-const aiResultExpired = computed(() => props.aiResultExpired)
-
 const streamStatus = computed(() => {
   if (!props.mjpegStreamUrl) return 'offline'
   return props.mjpegStreamReady ? 'live' : 'connecting'
 })
 
 const streamStatusText = computed(() => {
-  if (!props.mjpegStreamUrl) return '画面不可用'
-  return props.mjpegStreamReady ? '实时采集画面' : '画面加载中…'
+  if (!props.mjpegStreamUrl) return '采集不可用'
+  return props.mjpegStreamReady ? '实时视频流' : '连接中...'
+})
+
+const metaResultText = computed(() => {
+  if (!props.aiServiceOnline) return 'N/A'
+  if (props.aiResultExpired) return `${props.aiResult.label || '无目标'} (过期)`
+  return props.aiResult.ok ? props.aiResult.label : '无目标'
+})
+
+const metaConfText = computed(() => {
+  if (!props.aiServiceOnline || !props.aiResult.ok) return '--'
+  return `${(props.aiResult.conf * 100).toFixed(1)}%`
+})
+
+const metaTimeText = computed(() => {
+  if (!props.aiResult.timestamp) return '尚未采集'
+  return new Date(props.aiResult.timestamp).toLocaleTimeString('zh-CN', { hour12: false })
+})
+
+const metaResultClass = computed(() => {
+  if (!props.aiServiceOnline) return 'text-muted'
+  if (props.aiResultExpired) return 'text-warning'
+  return props.aiResult.ok ? 'text-success' : 'text-muted'
 })
 </script>
 
 <style scoped>
 .ai-card {
-  border-radius: var(--radius-lg, 16px);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
-  margin-bottom: 20px;
   border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 8px;
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s ease;
 }
 
 .ai-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   box-shadow: var(--shadow-xl);
-}
-
-/* 面板头 */
-.ai-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.ai-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.ai-subtitle {
-  margin-top: 4px;
-  font-size: var(--font-size-sm, 12px);
-  color: var(--color-text-tertiary);
 }
 
 /* 双列图像区 */
 .ai-dual-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .ai-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .panel-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--font-size-sm, 12px);
-  font-weight: 600;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.label-text {
+  font-size: 13px;
+  font-weight: 700;
   color: var(--color-text-secondary);
-  letter-spacing: 0.3px;
 }
 
 /* 录制指示灯 */
-.rec-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.live-indicator {
   margin-left: auto;
-  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,0,0,0.05);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #fff;
+  font-weight: 800;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.5px;
+}
+
+[data-theme='dark'] .live-indicator {
+  background: rgba(255,255,255,0.05);
+}
+
+.pulse-dot-red {
+  width: 8px;
+  height: 8px;
   background: #ef4444;
-  border-radius: var(--radius-full, 999px);
-  animation: rec-blink 1.5s infinite;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ef4444;
+  animation: pulse-subtle 1.5s infinite;
 }
 
-@keyframes rec-blink {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.4; }
-}
-
-/* 元数据行 */
-.ai-metadata-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-/* 图像容器 */
+/* 图像预览容器 */
 .ai-preview {
-  border-radius: var(--radius-lg, 12px);
+  position: relative;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--color-surface-muted);
+  background: #000;
   border: 1px solid var(--color-border);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.06);
-  flex: 1;
+  aspect-ratio: 4 / 3;
 }
 
-.ai-image {
-  display: block;
+/* 在堆叠容器中，图像绝对定位以重叠 */
+.ai-preview .ai-image {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  min-height: 240px;
   object-fit: contain;
-  background: var(--color-surface-muted);
+  display: block;
 }
 
-.ai-preview-stack {
-  position: relative;
-  min-height: 240px;
-}
-
-.ai-preview-stack .ai-image-stream-fallback {
-  position: absolute;
-  left: 0; top: 0;
-  width: 100%; height: 100%;
-  min-height: 240px;
-  object-fit: contain;
-  z-index: 0;
-}
-
-.ai-preview-stack .ai-image-mjpeg {
-  position: relative;
+.ai-image-stream-fallback {
   z-index: 1;
+}
+
+.ai-image-mjpeg {
+  z-index: 2;
   background: transparent;
 }
 
 .ai-image-placeholder {
+  width: 100%;
+  height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 240px;
+  background: var(--color-surface-muted);
   color: var(--color-text-tertiary);
-  font-size: 14px;
+  position: relative;
+  z-index: 5;
 }
 
-.camera-offline {
-  flex-direction: column;
-  gap: 8px;
-  background: var(--color-surface-muted);
+.placeholder-main {
+  font-weight: 700;
+  margin-top: 12px;
   color: var(--color-text-secondary);
 }
 
-.camera-offline-icon {
+.placeholder-sub {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.5;
+}
+
+/* 现代元数据行 */
+.ai-metadata-row-modern {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.meta-item {
+  background: var(--color-surface);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta-label {
+  font-size: 11px;
+  font-weight: 600;
   color: var(--color-text-tertiary);
-  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.camera-offline-sub {
-  font-size: var(--font-size-sm, 12px);
-  color: var(--color-text-tertiary);
+.meta-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text-primary);
 }
 
-/* 通用样式 */
-.text-danger-strong { color: var(--color-danger); font-weight: 700; }
-.text-success-bold { color: var(--color-success); font-weight: 700; }
-.text-warning-bold { color: var(--el-color-warning); font-weight: 700; }
-
-.ds-pop {
-  animation: pop-in 0.3s var(--ease-spring, cubic-bezier(0.175, 0.885, 0.32, 1.275));
-}
-@keyframes pop-in {
-  0%   { opacity: 0; transform: scale(0.8); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.ds-pulse-text {
-  animation: pulse-text 2s infinite ease-out;
-}
-@keyframes pulse-text {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.5; }
-}
+.text-success { color: var(--color-success); }
+.text-warning { color: var(--color-warning); }
+.text-danger  { color: var(--color-danger); }
+.text-muted   { color: var(--color-text-disabled); }
 
 /* 响应式 */
 @media (max-width: 900px) {
-  .ai-dual-panel {
-    grid-template-columns: 1fr;
-  }
-  .ai-metadata-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .ai-dual-panel { grid-template-columns: 1fr; }
+  .ai-metadata-row-modern { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

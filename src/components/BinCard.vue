@@ -3,29 +3,31 @@
     class="bin-card"
     :class="[bin.cardClass, { 'stagger-enter': animate }]"
     :style="animate ? { animationDelay: `${index * 80}ms` } : {}"
-    shadow="hover"
+    shadow="always"
   >
+    <!-- 动态流光背景（仅在满溢时显示） -->
+    <div v-if="bin.cardClass === 'card-full'" class="card-flow-bg" aria-hidden="true"></div>
+
     <!-- 顶部渐变色条 -->
     <div class="card-accent-strip" :class="bin.cardClass" aria-hidden="true"></div>
 
-    <!-- 满溢角标（不遮挡重量与进度条，与「即将满载」角标风格一致） -->
+    <!-- 满溢角标 -->
     <div v-if="bin.cardClass === 'card-full'" class="bin-badge badge-full">
       <el-icon class="badge-icon"><WarningFilled /></el-icon> 满溢
     </div>
 
-    <!-- 即将满载角标（重量已达满载阈值的 90%） -->
+    <!-- 即将满载角标 -->
     <div v-else-if="bin.cardClass === 'card-warning'" class="bin-badge badge-warning">
       <el-icon class="badge-icon"><WarnTriangleFilled /></el-icon> 即将满载
     </div>
 
     <!-- 卡片头：图标 + 仓名 + 状态标签 -->
     <div class="bin-header">
-      <span class="bin-icon-wrap">
+      <span class="bin-icon-wrap" :class="{ 'animate-float': bin.cardClass === 'card-full' }">
         <el-icon :size="24" class="bin-icon-el"><component :is="binIcon" /></el-icon>
       </span>
       <span class="bin-name">{{ bin.name }}</span>
-      <!-- 正常态时用标签说明状态；预警/满溢时右上角已有角标，此处不再重复展示 -->
-      <el-tag v-if="bin.cardClass === 'card-normal'" :type="bin.tagType" size="small" class="bin-status-tag">
+      <el-tag v-if="bin.cardClass === 'card-normal'" :type="bin.tagType" size="small" class="bin-status-tag" effect="dark">
         {{ bin.statusText }}
       </el-tag>
     </div>
@@ -40,7 +42,7 @@
         </div>
       </div>
       <div class="metric">
-        <div class="metric-label">满溢百分比</div>
+        <div class="metric-label">容量占比</div>
         <div class="metric-value">
           <NumberTween class="value-number" :class="{ 'text-danger': bin.cardClass === 'card-full' }" :value="bin.percent" :precision="1" />
           <span class="value-unit">%</span>
@@ -50,12 +52,17 @@
 
     <!-- 进度条 -->
     <el-tooltip :content="`容量上限：${overflowThresholdG} g`" placement="bottom">
-      <el-progress
-        :percentage="Math.min(bin.percent, 100)"
-        :status="bin.progress"
-        :stroke-width="12"
-        class="bin-progress"
-      />
+      <div class="progress-wrapper">
+        <el-progress
+          :percentage="Math.min(bin.percent, 100)"
+          :status="bin.progress"
+          :stroke-width="14"
+          :show-text="false"
+          class="bin-progress"
+          :class="{ 'progress-striped': bin.percent > 0 }"
+        />
+        <div class="progress-glow" :style="{ width: `${Math.min(bin.percent, 100)}%` }" :class="bin.progress"></div>
+      </div>
     </el-tooltip>
   </el-card>
 </template>
@@ -77,19 +84,40 @@ defineProps({
 .bin-card {
   border-radius: var(--radius-lg, 16px);
   overflow: hidden;
-  transition: transform 0.22s var(--ease-out, ease-out), box-shadow 0.22s ease-out;
-  margin-bottom: 20px;
+  transition: all 0.4s var(--ease-spring);
+  margin-bottom: 24px;
   border: 1px solid var(--color-border);
   position: relative;
+  background: var(--color-surface);
+  perspective: 1000px;
 }
 
 .bin-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-8px) rotateX(2deg) rotateY(1deg);
   box-shadow: var(--shadow-xl);
+  border-color: var(--color-primary-soft);
 }
 
-[data-theme='dark'] .bin-card:hover {
-  box-shadow: 0 4px 8px rgba(0,0,0,0.35), 0 16px 40px rgba(0,0,0,0.45);
+/* 满溢时的流光背景 */
+.card-flow-bg {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    transparent, 
+    rgba(239, 68, 68, 0.1), 
+    transparent 30%
+  );
+  animation: rotate-slow 4s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes rotate-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* 顶部渐变色条 */
@@ -98,9 +126,8 @@ defineProps({
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 6px;
   z-index: 5;
-  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
 }
 
 .card-accent-strip.card-normal {
@@ -110,30 +137,94 @@ defineProps({
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
 }
 .card-accent-strip.card-full {
-  background: var(--gradient-danger);
-  animation: pulse-strip 2s infinite ease-in-out;
+  background: linear-gradient(90deg, #ef4444, #f87171, #ef4444);
+  background-size: 200% 100%;
+  animation: flow-border 3s linear infinite;
 }
 
-@keyframes pulse-strip {
-  0%, 100% { opacity: 0.8; }
-  50%      { opacity: 1; }
-}
-
-/* 三态卡片样式 */
+/* 三态卡片边框强化 */
 .card-full {
-  border: 2px solid var(--card-full-border) !important;
-  background: var(--card-full-bg) !important;
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.15);
 }
 
-.card-warning {
-  border: 2px solid var(--card-warning-border) !important;
-  background: var(--card-warning-bg) !important;
+/* 进度条增强 */
+.progress-wrapper {
+  position: relative;
+  margin-top: 12px;
+  margin-bottom: 6px;
 }
 
-.card-normal {
-  border: 2px solid var(--card-normal-border) !important;
-  background: var(--card-normal-bg) !important;
+.bin-progress :deep(.el-progress-bar__outer) {
+  background-color: var(--color-surface-muted);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  filter: blur(8px);
+  opacity: 0.4;
+  pointer-events: none;
+  border-radius: var(--radius-full);
+  transition: width 0.6s ease;
+}
+
+.progress-glow.success { background: var(--color-success); }
+.progress-glow.warning { background: var(--color-warning); }
+.progress-glow.exception { background: var(--color-danger); }
+
+/* 指标区：内凹感 */
+.bin-metrics {
+  display: flex;
+  margin-bottom: 20px;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+[data-theme='dark'] .bin-metrics {
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.metric {
+  flex: 1;
+  padding: 14px 18px;
+  position: relative;
+}
+
+.metric:first-child::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 20%;
+  height: 60%;
+  width: 1px;
+  background: var(--color-border);
+  opacity: 0.5;
+}
+
+.value-number {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.bin-icon-wrap {
+  background: var(--gradient-primary);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+}
+
+[data-theme='dark'] .bin-icon-wrap {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 /* 预警角标 */

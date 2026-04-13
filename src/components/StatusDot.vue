@@ -1,49 +1,82 @@
 <template>
-  <span class="status-dot" :class="status"></span>
+  <div class="status-dot-container">
+    <span class="status-dot" :class="status"></span>
+    <span v-if="shouldPulse" class="status-pulse" :class="status"></span>
+  </div>
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   status: {
     type: String,
     required: true,
     validator: (v) => ['online', 'offline', 'connecting', 'live', 'result'].includes(v)
   }
 })
+
+const shouldPulse = computed(() => ['online', 'live', 'connecting'].includes(props.status))
 </script>
 
 <style scoped>
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+.status-dot-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
   flex-shrink: 0;
 }
 
+.status-dot {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.status-pulse {
+  position: absolute;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  animation: status-pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+}
+
+@keyframes status-pulse-ring {
+  0%   { transform: scale(0.7); opacity: 0.8; }
+  80%, 100% { transform: scale(2.5); opacity: 0; }
+}
+
 .status-dot.online,
-.status-dot.live {
-  background: var(--color-success);
-  box-shadow: 0 0 0 2px var(--color-success-bg);
-  animation: pulse-dot 2s infinite;
+.status-dot.live,
+.status-pulse.online,
+.status-pulse.live {
+  background: #10b981;
 }
 
-.status-dot.offline {
-  background: var(--color-danger);
+.status-dot.offline,
+.status-pulse.offline {
+  background: #ef4444;
 }
 
-.status-dot.connecting {
-  background: var(--color-warning);
-  box-shadow: 0 0 0 2px var(--color-warning-bg);
-  animation: pulse-dot 1s infinite;
+.status-dot.connecting,
+.status-pulse.connecting {
+  background: #f59e0b;
+  animation-duration: 1s;
 }
 
 .status-dot.result {
-  background: var(--color-accent);
+  background: #3b82f6;
 }
 
-@keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 0 2px var(--color-success-bg); }
-  50%       { box-shadow: 0 0 0 5px var(--color-success-bg); }
+[data-theme='dark'] .status-dot {
+  border-color: rgba(0, 0, 0, 0.2);
 }
 </style>

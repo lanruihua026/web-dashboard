@@ -3,64 +3,61 @@
   <div class="dashboard" :class="{ 'dashboard--overflow-alert': hasAnyBinFull }">
 
     <!-- ===== 顶部标题栏 ===== -->
-    <AppHeader title="电子废弃物分类回收监控系统" tagline="智能分拣 · 实时监控" :icon="DataBoard">
-      <!-- 中部：设备状态信息 -->
+    <AppHeader title="电子废弃物分类回收监控系统" tagline="INTELLIGENT RECYCLING · REAL-TIME MONITOR" :icon="DataBoard">
+      <!-- 中部：设备与服务器状态 -->
       <template #center>
-        <el-tooltip content="设备状态：ESP32-S3是否与OneNET物联网平台成功建立连接" placement="bottom">
-          <div class="status-indicator">
-            <StatusDot :status="deviceStatusPhase" />
-            <span class="status-text">{{ deviceStatusText }}</span>
-          </div>
-        </el-tooltip>
-        <el-tooltip content="后端识别服务器是否正常工作" placement="bottom">
-          <div class="status-indicator">
-            <StatusDot :status="aiStatusPhase" />
-            <span class="status-text">{{ aiStatusText }}</span>
-          </div>
-        </el-tooltip>
-        <el-tooltip content="设备名称,由OneNET物联网平台设置" placement="bottom">
-          <span class="device-chip">
-            <el-icon class="device-chip-icon" :size="14"><Monitor /></el-icon>
-            Box1
-          </span>
-        </el-tooltip>
-        <el-tooltip v-if="properties.lastReportTime" :content="'最后在线：' + new Date(properties.lastReportTime).toLocaleString('zh-CN')" placement="bottom">
-          <span class="device-chip device-chip-muted" style="cursor: help;">
-            <el-icon class="device-chip-icon" :size="14"><Clock /></el-icon>
-          </span>
-        </el-tooltip>
-        <el-tooltip :content="'后端识别服务器地址：' + aiServerAddr" placement="bottom">
-          <span class="device-chip device-chip-muted" style="cursor: help;">
-            <el-icon class="device-chip-icon" :size="14"><Connection /></el-icon>
-          </span>
-        </el-tooltip>
+        <div class="header-status-group">
+          <el-tooltip content="ESP32-S3 核心网关连接状态" placement="bottom">
+            <div class="status-indicator-modern">
+              <StatusDot :status="deviceStatusPhase" />
+              <span class="status-label">网关</span>
+              <span class="status-value" :class="deviceStatusPhase">{{ deviceStatusText }}</span>
+            </div>
+          </el-tooltip>
+          <div class="status-sep"></div>
+          <el-tooltip content="YOLO AI 推理服务在线状态" placement="bottom">
+            <div class="status-indicator-modern">
+              <StatusDot :status="aiStatusPhase" />
+              <span class="status-label">AI 推理端</span>
+              <span class="status-value" :class="aiStatusPhase">{{ aiStatusText }}</span>
+            </div>
+          </el-tooltip>
+        </div>
       </template>
 
-      <!-- 右侧：最后更新时间 + 自动刷新开关 + 手动刷新按钮 -->
+      <!-- 右侧：全局控制与导航 -->
       <template #right>
-        <span class="update-time">更新：{{ lastUpdateTime || '尚未刷新' }}</span>
-        <ThemeToggle />
-        <el-switch
-          v-model="autoRefresh"
-          active-text="自动刷新"
-          inactive-text="暂停刷新"
-          @change="onAutoRefreshChange"
-          class="auto-switch"
-        />
-        <el-badge :value="overflowAlertCount" :hidden="overflowAlertCount === 0" :max="99" class="msg-badge-wrap">
-          <el-button :icon="Bell" @click="router.push('/messages')" round class="header-btn header-btn-muted">
-            消息中心
+        <div class="header-actions-modern">
+          <ThemeToggle />
+          <div class="refresh-control">
+            <el-switch
+              v-model="autoRefresh"
+              @change="onAutoRefreshChange"
+              class="modern-switch"
+            />
+            <span class="refresh-label">{{ autoRefresh ? '自动同步' : '已暂停' }}</span>
+          </div>
+          
+          <div class="action-group">
+            <el-badge :value="overflowAlertCount" :hidden="overflowAlertCount === 0" :max="99">
+              <el-button :icon="Bell" @click="router.push('/messages')" circle class="action-circle-btn" />
+            </el-badge>
+            <el-button :icon="TrendCharts" @click="router.push('/history')" circle class="action-circle-btn" />
+            <el-button :icon="Memo" @click="router.push('/experiments')" circle class="action-circle-btn" />
+            <el-button :icon="Setting" @click="openSettings" circle class="action-circle-btn action-circle-btn-warn" />
+          </div>
+
+          <el-button 
+            type="primary" 
+            :icon="Refresh" 
+            :loading="manualLoading" 
+            @click="fetchAll(true)" 
+            round
+            class="glow-button"
+          >
+            同步数据
           </el-button>
-        </el-badge>
-        <el-button :icon="TrendCharts" @click="router.push('/history')" round class="header-btn header-btn-muted">
-          历史趋势
-        </el-button>
-        <el-button :icon="Setting" @click="openSettings" round class="header-btn header-btn-warn">
-          系统设置
-        </el-button>
-        <el-button :icon="Refresh" :loading="manualLoading" @click="fetchAll(true)" round class="header-btn header-btn-primary">
-          手动刷新
-        </el-button>
+        </div>
       </template>
     </AppHeader>
 
@@ -174,46 +171,60 @@
       </template>
     </el-dialog>
 
-    <!-- ===== 垃圾桶状态卡片区（手机仓 / 数码配件仓 / 电池仓）===== -->
-    <div class="section-head card-row section-head-first">
-      <span class="section-label">仓位状态</span>
-      <span class="section-hint">重量与容量来自OneNET云平台</span>
-    </div>
-    <el-row :gutter="20" class="card-row">
-      <!-- 遍历 binViews（包含预计算的样式与状态），每个仓位渲染一张卡片 -->
-      <el-col v-for="(bin, idx) in binViews" :key="bin.key" :xs="24" :sm="24" :lg="8">
-        <BinCard
-          :bin="bin"
-          :binIcon="BIN_ICONS[bin.key]"
-          :overflowThresholdG="settingsForm.overflowThresholdG"
-          :index="idx"
-        />
-      </el-col>
-    </el-row>
+    <!-- ===== 仓位状态区 ===== -->
+    <div class="section-container main-content-stagger stagger-1">
+      <div class="section-header-modern">
+        <div class="section-title">
+          <div class="title-accent"></div>
+          <h3>仓位实时状态监测</h3>
+          <span class="title-tag">LIVE DATA</span>
+        </div>
+        <div class="section-meta">
+          数据来源：OneNET 物联网平台 <span class="meta-dot"></span>
+        </div>
+      </div>
 
-    <!-- ===== AI 识别结果面板 ===== -->
-    <div class="section-head card-row">
-      <span class="section-label">视觉识别区域</span>
-      <span class="section-hint">图像数据由ESP32-CAM提供</span>
+      <el-row :gutter="24" class="card-row">
+        <!-- 遍历 binViews（包含预计算的样式与状态），每个仓位渲染一张卡片 -->
+        <el-col v-for="(bin, idx) in binViews" :key="bin.key" :xs="24" :sm="12" :lg="8">
+          <BinCard
+            :bin="bin"
+            :binIcon="BIN_ICONS[bin.key]"
+            :overflowThresholdG="settingsForm.overflowThresholdG"
+            :index="idx"
+          />
+        </el-col>
+      </el-row>
     </div>
-    <el-row :gutter="20" class="card-row">
-      <el-col :xs="24">
-        <AiVisionPanel
-          :aiResult="aiResult"
-          :aiServiceOnline="aiServiceOnline"
-          :aiResultExpired="aiResultExpired"
-          :mjpegStreamUrl="mjpegStreamUrl"
-          :mjpegStreamReady="mjpegStreamReady"
-          :mjpegStreamDisplaySrc="mjpegStreamDisplaySrc"
-          :rawImageUrl="rawImageUrl"
-          :deviceOnline="deviceOnline"
-          @stream-load="onStreamImageLoad"
-          @stream-error="onStreamImageError"
-          @raw-error="onRawImageError"
-          @annotated-error="onAnnotatedImageError"
-        />
-      </el-col>
-    </el-row>
+
+    <!-- ===== AI 视觉识别引擎 ===== -->
+    <div class="section-container main-content-stagger stagger-2">
+      <div class="section-header-modern">
+        <div class="section-title">
+          <div class="title-accent accent-ai"></div>
+          <h3>AI 视觉识别引擎</h3>
+          <span class="title-tag">YOLO V8</span>
+        </div>
+        <div class="section-meta">
+          流媒体源：ESP32-CAM MJPEG <span class="meta-dot dot-ai"></span>
+        </div>
+      </div>
+      
+      <AiVisionPanel
+        :aiResult="aiResult"
+        :aiServiceOnline="aiServiceOnline"
+        :aiResultExpired="aiResultExpired"
+        :mjpegStreamUrl="mjpegStreamUrl"
+        :mjpegStreamReady="mjpegStreamReady"
+        :mjpegStreamDisplaySrc="mjpegStreamDisplaySrc"
+        :rawImageUrl="rawImageUrl"
+        :deviceOnline="deviceStatusPhase === 'online'"
+        @stream-load="onStreamImageLoad"
+        @stream-error="onStreamImageError"
+        @raw-error="onRawImageError"
+        @annotated-error="onAnnotatedImageError"
+      />
+    </div>
 
     <!-- ===== 全局错误提示（请求失败时出现）===== -->
     <el-alert
@@ -245,22 +256,17 @@ import AppFooter from '../components/AppFooter.vue'
 // Element Plus 图标（ui-ux-pro-max：避免用 emoji 作为界面图标）
 import {
   Cellphone,
-  Clock,
   Connection,
   DataBoard,
   InfoFilled,
   Lightning,
   Loading,
-  Monitor,
-  Moon,
+  Memo,
   Refresh,
-  Search,
   Setting,
-  Sunny,
   TrendCharts,
   Bell,
-  WarningFilled,
-  WarnTriangleFilled
+  WarningFilled
 } from '@element-plus/icons-vue'
 
 /** 仓位 key → 图标组件 */
@@ -526,8 +532,6 @@ const aiStatusText = computed(() => (
       : '后端服务断开'
 ))
 
-/** 是否设备在线连接；离线时应清空缓存图片 */
-const deviceOnline = computed(() => deviceStatusPhase.value === 'online')
 
 // ───────────────────────────────────────────
 // 系统设置对话框状态
@@ -537,8 +541,6 @@ const settingsSaving = ref(false)
 const settingsErrorMsg = ref('')   // 对话框内联错误文本（ElMessage 失效时的兜底显示）
 const settingsSyncMsg = ref('')    // 保存过程中显示当前正在执行的步骤
 
-/** 当前推理服务地址（从环境变量读取，仅用于 Header 显示，方便答辩现场自检） */
-const aiServerAddr = `${import.meta.env.VITE_AI_SERVER_HOST || '192.168.0.168'}:${import.meta.env.VITE_AI_SERVER_PORT || '8000'}`
 const settingsForm = ref({
   confThreshold: Number(dashboardSnapshot?.settingsForm?.confThreshold ?? 0.70),
   overflowThresholdG: Number(dashboardSnapshot?.settingsForm?.overflowThresholdG ?? 1000)
@@ -1215,221 +1217,180 @@ async function saveSettings() {
 /* ===== 根容器 ===== */
 .dashboard {
   min-height: 100vh;
-  background: var(--color-page-bg);
-  padding: 78px 0 40px;
-  transition: background 0.25s ease;
+  padding: 88px 0 60px;
+  transition: background 0.5s var(--ease-out);
 }
 
-/* 满溢时仅对仪表盘容器做内阴影脉冲，不操作 body，避免整页无法交互 */
-.dashboard.dashboard--overflow-alert {
-  animation: dashboard-danger-inset 2s infinite ease-in-out;
+.main-content-stagger > * {
+  animation: stagger-fade-up 0.6s var(--ease-out) both;
 }
 
-@keyframes dashboard-danger-inset {
-  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239, 68, 68, 0); }
-  50% { box-shadow: inset 0 0 32px 8px rgba(239, 68, 68, 0.38); }
-}
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
 
-.msg-badge-wrap {
-  display: inline-flex;
+/* ===== 现代状态指示器 ===== */
+.header-status-group {
+  display: flex;
   align-items: center;
-  vertical-align: middle;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 4px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
 }
 
-.overflow-dialog-title {
-  display: inline-flex;
+[data-theme='dark'] .header-status-group {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.status-indicator-modern {
+  display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--el-color-danger);
 }
 
-.overflow-dialog-title-icon {
-  font-size: 20px;
-}
-
-.overflow-dialog-alert {
-  margin-bottom: 16px;
-}
-
-.overflow-dialog-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.overflow-dialog-item {
-  padding: 14px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface-muted);
-}
-
-.overflow-dialog-item-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.overflow-dialog-item-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.overflow-dialog-item-meta {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-
-/* ===== Header 内嵌元素（通过 slot 传入，scoped 仍生效） ===== */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: help;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-}
-
-.status-text {
+.status-label {
   font-size: 12px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.device-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.device-chip-icon {
-  flex-shrink: 0;
+  font-weight: 600;
   color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.device-chip-muted {
-  font-weight: 400;
-  color: var(--color-text-tertiary);
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.update-time {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
-}
-
-/* 自动刷新开关主题色 */
-.auto-switch {
-  --el-switch-on-color: var(--color-primary);
-}
-
-.header-btn {
-  --el-button-border-color: var(--color-border);
-  --el-button-hover-border-color: var(--color-border-strong);
-  --el-button-text-color: var(--color-text-secondary);
-  --el-button-hover-text-color: var(--color-text-primary);
-  --el-button-bg-color: var(--color-surface);
-  --el-button-hover-bg-color: var(--color-surface-muted);
-  --el-button-active-bg-color: var(--color-surface-muted);
-  --el-button-active-text-color: var(--color-text-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.header-btn-muted {
-  --el-button-bg-color: var(--color-surface-muted);
-  --el-button-hover-bg-color: var(--color-accent-light);
-  --el-button-hover-border-color: var(--color-accent);
-  --el-button-hover-text-color: var(--color-accent);
-}
-
-.header-btn-warn {
-  --el-button-bg-color: transparent;
-  --el-button-border-color: var(--color-warning-bg);
-  --el-button-text-color: var(--color-warning);
-  --el-button-hover-bg-color: var(--color-warning-bg);
-  --el-button-hover-border-color: var(--color-warning);
-  --el-button-hover-text-color: var(--color-warning);
-}
-
-.header-btn-primary {
-  --el-button-bg-color: var(--color-primary);
-  --el-button-border-color: var(--color-primary);
-  --el-button-text-color: #fff;
-  --el-button-hover-bg-color: var(--color-primary-soft);
-  --el-button-hover-border-color: var(--color-primary-soft);
-  --el-button-hover-text-color: #fff;
-}
-
-.form-label-meta {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-}
-
-.settings-sync-hint {
-  margin-top: 12px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ===== 分区标题 ===== */
-.section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-bottom: 10px;
-  padding-top: 4px;
-}
-
-.section-head-first {
-  margin-top: 4px;
-}
-
-.section-label {
+.status-value {
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-text-primary);
-  letter-spacing: 0.04em;
 }
 
-.section-label::before {
-  content: '';
-  display: inline-block;
-  width: 3px;
+.status-value.online { color: var(--color-success); }
+.status-value.offline { color: var(--color-danger); }
+
+.status-sep {
+  width: 1px;
   height: 14px;
-  margin-right: 10px;
-  border-radius: 2px;
-  background: var(--color-primary);
-  vertical-align: -2px;
+  background: var(--color-border);
 }
 
-.section-hint {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
+/* ===== 现代交互区 ===== */
+.header-actions-modern {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
+
+.refresh-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-circle-btn {
+  background: var(--color-surface-muted) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  transition: all 0.3s var(--ease-spring) !important;
+}
+
+.action-circle-btn:hover {
+  transform: translateY(-2px);
+  background: var(--color-surface-elevated) !important;
+  color: var(--color-primary) !important;
+  box-shadow: var(--shadow-md);
+}
+
+.glow-button {
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  transition: all 0.3s ease;
+}
+
+.glow-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+}
+
+/* ===== 分区标题重塑 ===== */
+.section-container {
+  margin-bottom: 40px;
+}
+
+.section-header-modern {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-accent {
+  width: 6px;
+  height: 24px;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+}
+
+.accent-ai {
+  background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+}
+
+.section-title h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+}
+
+.title-tag {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.section-meta {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meta-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--color-success);
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px var(--color-success);
+  animation: pulse-subtle 2s infinite;
+}
+
+.dot-ai { background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; }
+
+/* 满溢时仪表盘容器内阴影脉冲 */
 
 /* ===== 卡片行间距 ===== */
 .card-row {
