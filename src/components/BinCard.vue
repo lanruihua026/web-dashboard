@@ -198,57 +198,6 @@ defineProps({
 .progress-glow.warning { background: var(--color-warning); }
 .progress-glow.exception { background: var(--color-danger); }
 
-/* 指标区：内凹感 */
-.bin-metrics {
-  display: flex;
-  margin-bottom: 20px;
-  background: var(--color-surface-muted);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-}
-
-.bin-metrics.is-offline {
-  background: rgba(0, 0, 0, 0.05);
-  box-shadow: none;
-}
-
-[data-theme='dark'] .bin-metrics {
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.metric {
-  flex: 1;
-  padding: 14px 18px;
-  position: relative;
-}
-
-.metric:first-child::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 20%;
-  height: 60%;
-  width: 1px;
-  background: var(--color-border);
-  opacity: 0.5;
-}
-
-.value-number {
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -1px;
-}
-
-.bin-icon-wrap {
-  background: var(--gradient-primary);
-  color: white;
-  border: none;
-  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
-}
-
 .bin-icon-wrap.is-offline {
   background: var(--color-text-disabled, #9ca3af) !important;
   box-shadow: none !important;
@@ -333,10 +282,21 @@ defineProps({
   display: flex;
   gap: 0;
   margin-bottom: 18px;
+  background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md, 10px);
   overflow: hidden;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.bin-metrics.is-offline {
+  background: rgba(0, 0, 0, 0.05);
+  box-shadow: none;
+}
+
+[data-theme='dark'] .bin-metrics {
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .metric {

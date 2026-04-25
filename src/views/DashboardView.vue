@@ -280,6 +280,7 @@ const BIN_ICONS = {
 import { ElMessage, ElNotification } from 'element-plus'
 // AI 推理服务 API：获取最新识别结果、摄像头信息、系统配置
 import { fetchLatestAiResult, fetchConfig, updateConfig, fetchCamInfo } from '../api/ai'
+import { BINS, mapAiLabelToCategory } from '../constants/recyclingBins'
 // OneNET 平台 API：获取设备物模型属性、下发满溢阈值
 import {
   confirmDevicePropertyApplied,
@@ -299,31 +300,6 @@ const router = useRouter()
 // ───────────────────────────────────────────
 
 const STATUS_INIT_TIMEOUT_MS = 4000
-const AI_CATEGORY_RULES = [
-  { key: 'phone', aliases: ['MobilePhone', 'Phone', '手机'] },
-  { key: 'mouse', aliases: ['Charger', 'Earphone', 'Accessory', 'Mouse', '数码配件', '配件', '充电器', '耳机'] },
-  { key: 'battery', aliases: ['Battery', '电池'] }
-]
-
-function normalizeAliasToken(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, '')
-}
-
-function mapAiLabelToCategory(label) {
-  const token = normalizeAliasToken(label)
-  if (!token) return null
-
-  for (const rule of AI_CATEGORY_RULES) {
-    if (rule.aliases.some((alias) => normalizeAliasToken(alias) === token)) {
-      return rule.key
-    }
-  }
-
-  return null
-}
 
 /**
  * 根据设备上报的三态状态（full / nearFull / 正常）计算展示样式。
@@ -359,13 +335,6 @@ const hasAnyBinFull = computed(() =>
 // ───────────────────────────────────────────
 // 常量：仓位配置
 // ───────────────────────────────────────────
-
-/** 三个回收仓的元数据，key 与 OneNET 物模型属性前缀一致 */
-const BINS = [
-  { key: 'phone',   name: '手机仓' },
-  { key: 'mouse',   name: '数码配件仓' },
-  { key: 'battery', name: '电池仓' }
-]
 
 /** 满溢上升沿检测：与 binViews 一致，full 或 percent≥100 视为已满 */
 function effectiveBinFull(p) {
