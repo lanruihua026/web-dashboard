@@ -13,42 +13,46 @@
           </div>
         </div>
         <div class="ai-preview ai-preview-stream ai-preview-stack">
-          <!-- 设备离线占位符 -->
+          <!-- 1. 设备完全离线 -->
           <div v-if="!deviceOnline" class="ai-image-placeholder camera-offline">
             <el-icon class="camera-offline-icon" :size="48"><Search /></el-icon>
             <div class="placeholder-main">核心设备通信中断</div>
             <div class="placeholder-sub">请检查 ESP32-S3 网络状态</div>
           </div>
-          <!-- shimmer 加载态 -->
+
+          <!-- 2. 设备在线但摄像头 IP 缺失 (无法建立 MJPEG) -->
+          <div v-else-if="!mjpegStreamUrl" class="ai-image-placeholder camera-offline">
+            <el-icon class="camera-offline-icon" :size="48"><Monitor /></el-icon>
+            <div class="placeholder-main">未探测到摄像头 IP</div>
+            <div class="placeholder-sub">请检查 ESP32-CAM 供电或配网状态</div>
+          </div>
+
+          <!-- 3. 有 IP 但 MJPEG 尚未就绪且无缓存底图 (加载中) -->
           <template v-else-if="!mjpegStreamReady && !rawImageUrl">
             <div class="ai-image-placeholder shimmer"></div>
           </template>
-          <template v-else-if="mjpegStreamUrl">
-            <!-- 堆叠模式：Fallback 底图 + MJPEG 实时流 -->
+
+          <!-- 4. 正常/降级显示：有 IP 且 (MJPEG 就绪 或 有底图) -->
+          <template v-else>
+            <!-- 堆叠模式：Fallback 底图 (z-index: 1) -->
             <img
               v-if="rawImageUrl"
               :src="rawImageUrl"
               class="ai-image ai-image-stream-fallback"
               alt=""
               aria-hidden="true"
+              @error="$emit('raw-error')"
             />
+            <!-- MJPEG 实时流 (z-index: 2) -->
             <img
+              v-if="mjpegStreamUrl"
+              v-show="mjpegStreamReady"
               :src="mjpegStreamDisplaySrc"
               alt="ESP32-CAM MJPEG stream"
               class="ai-image ai-image-mjpeg"
               @load="$emit('stream-load')"
               @error="$emit('stream-error')"
             />
-          </template>
-          <template v-else>
-            <img
-              v-if="rawImageUrl"
-              :src="rawImageUrl"
-              alt="latest raw frame from server"
-              class="ai-image"
-              @error="$emit('raw-error')"
-            />
-            <div v-else class="ai-image-placeholder">等待画面输入...</div>
           </template>
         </div>
       </div>
@@ -133,7 +137,7 @@ const streamStatus = computed(() => {
 })
 
 const streamStatusText = computed(() => {
-  if (!props.mjpegStreamUrl) return '采集不可用'
+  if (!props.mjpegStreamUrl) return '未探测到 IP'
   return props.mjpegStreamReady ? '实时视频流' : '连接中...'
 })
 

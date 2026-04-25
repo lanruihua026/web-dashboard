@@ -1,67 +1,67 @@
 <template>
   <el-card
     class="bin-card"
-    :class="[bin.cardClass, { 'stagger-enter': animate }]"
+    :class="[bin.cardClass, { 'stagger-enter': animate, 'is-offline': !deviceOnline }]"
     :style="animate ? { animationDelay: `${index * 80}ms` } : {}"
     shadow="always"
   >
-    <!-- 动态流光背景（仅在满溢时显示） -->
-    <div v-if="bin.cardClass === 'card-full'" class="card-flow-bg" aria-hidden="true"></div>
+    <!-- 动态流光背景（仅在满溢且在线时显示） -->
+    <div v-if="bin.cardClass === 'card-full' && deviceOnline" class="card-flow-bg" aria-hidden="true"></div>
 
     <!-- 顶部渐变色条 -->
-    <div class="card-accent-strip" :class="bin.cardClass" aria-hidden="true"></div>
+    <div class="card-accent-strip" :class="deviceOnline ? bin.cardClass : 'card-offline'" aria-hidden="true"></div>
 
     <!-- 满溢角标 -->
-    <div v-if="bin.cardClass === 'card-full'" class="bin-badge badge-full">
+    <div v-if="deviceOnline && bin.cardClass === 'card-full'" class="bin-badge badge-full">
       <el-icon class="badge-icon"><WarningFilled /></el-icon> 满溢
     </div>
 
     <!-- 即将满载角标 -->
-    <div v-else-if="bin.cardClass === 'card-warning'" class="bin-badge badge-warning">
+    <div v-else-if="deviceOnline && bin.cardClass === 'card-warning'" class="bin-badge badge-warning">
       <el-icon class="badge-icon"><WarnTriangleFilled /></el-icon> 即将满载
     </div>
 
     <!-- 卡片头：图标 + 仓名 + 状态标签 -->
     <div class="bin-header">
-      <span class="bin-icon-wrap" :class="{ 'animate-float': bin.cardClass === 'card-full' }">
+      <span class="bin-icon-wrap" :class="{ 'animate-float': deviceOnline && bin.cardClass === 'card-full', 'is-offline': !deviceOnline }">
         <el-icon :size="24" class="bin-icon-el"><component :is="binIcon" /></el-icon>
       </span>
-      <span class="bin-name">{{ bin.name }}</span>
-      <el-tag v-if="bin.cardClass === 'card-normal'" :type="bin.tagType" size="small" class="bin-status-tag" effect="dark">
-        {{ bin.statusText }}
+      <span class="bin-name" :class="{ 'text-muted': !deviceOnline }">{{ bin.name }}</span>
+      <el-tag :type="deviceOnline ? bin.tagType : 'info'" size="small" class="bin-status-tag" effect="dark">
+        {{ deviceOnline ? bin.statusText : '设备离线' }}
       </el-tag>
     </div>
 
     <!-- 指标区 -->
-    <div class="bin-metrics">
+    <div class="bin-metrics" :class="{ 'is-offline': !deviceOnline }">
       <div class="metric">
         <div class="metric-label">当前重量</div>
         <div class="metric-value">
-          <NumberTween class="value-number" :class="{ 'text-danger': bin.cardClass === 'card-full' }" :value="bin.weight" />
+          <NumberTween class="value-number" :class="{ 'text-danger': deviceOnline && bin.cardClass === 'card-full', 'text-muted': !deviceOnline }" :value="bin.weight" />
           <span class="value-unit">g</span>
         </div>
       </div>
       <div class="metric">
         <div class="metric-label">容量占比</div>
         <div class="metric-value">
-          <NumberTween class="value-number" :class="{ 'text-danger': bin.cardClass === 'card-full' }" :value="bin.percent" :precision="1" />
+          <NumberTween class="value-number" :class="{ 'text-danger': deviceOnline && bin.cardClass === 'card-full', 'text-muted': !deviceOnline }" :value="bin.percent" :precision="1" />
           <span class="value-unit">%</span>
         </div>
       </div>
     </div>
 
     <!-- 进度条 -->
-    <el-tooltip :content="`容量上限：${overflowThresholdG} g`" placement="bottom">
+    <el-tooltip :content="deviceOnline ? `容量上限：${overflowThresholdG} g` : '设备离线，数据可能已过期'" placement="bottom">
       <div class="progress-wrapper">
         <el-progress
           :percentage="Math.min(bin.percent, 100)"
-          :status="bin.progress"
+          :status="deviceOnline ? bin.progress : ''"
           :stroke-width="14"
           :show-text="false"
           class="bin-progress"
-          :class="{ 'progress-striped': bin.percent > 0 }"
+          :class="{ 'progress-striped': deviceOnline && bin.percent > 0, 'is-offline': !deviceOnline }"
         />
-        <div class="progress-glow" :style="{ width: `${Math.min(bin.percent, 100)}%` }" :class="bin.progress"></div>
+        <div v-if="deviceOnline" class="progress-glow" :style="{ width: `${Math.min(bin.percent, 100)}%` }" :class="bin.progress"></div>
       </div>
     </el-tooltip>
   </el-card>
@@ -76,7 +76,8 @@ defineProps({
   binIcon: { type: [Object, String], required: true },
   overflowThresholdG: { type: Number, default: 1000 },
   index: { type: Number, default: 0 },
-  animate: { type: Boolean, default: true }
+  animate: { type: Boolean, default: true },
+  deviceOnline: { type: Boolean, default: true }
 })
 </script>
 
@@ -90,6 +91,19 @@ defineProps({
   position: relative;
   background: var(--color-surface);
   perspective: 1000px;
+}
+
+/* 离线状态卡片置灰 */
+.bin-card.is-offline {
+  opacity: 0.7;
+  filter: grayscale(0.6);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+.bin-card.is-offline:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 .bin-card:hover {
@@ -141,6 +155,9 @@ defineProps({
   background-size: 200% 100%;
   animation: flow-border 3s linear infinite;
 }
+.card-accent-strip.card-offline {
+  background: var(--color-text-disabled, #9ca3af);
+}
 
 /* 三态卡片边框强化 */
 .card-full {
@@ -159,6 +176,10 @@ defineProps({
   background-color: var(--color-surface-muted);
   border-radius: var(--radius-full);
   overflow: hidden;
+}
+
+.bin-progress.is-offline :deep(.el-progress-bar__inner) {
+  background-color: var(--color-text-disabled, #d1d5db) !important;
 }
 
 .progress-glow {
@@ -186,6 +207,11 @@ defineProps({
   border: 1px solid var(--color-border);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
   overflow: hidden;
+}
+
+.bin-metrics.is-offline {
+  background: rgba(0, 0, 0, 0.05);
+  box-shadow: none;
 }
 
 [data-theme='dark'] .bin-metrics {
@@ -221,6 +247,11 @@ defineProps({
   color: white;
   border: none;
   box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+}
+
+.bin-icon-wrap.is-offline {
+  background: var(--color-text-disabled, #9ca3af) !important;
+  box-shadow: none !important;
 }
 
 [data-theme='dark'] .bin-icon-wrap {
@@ -291,6 +322,10 @@ defineProps({
   font-weight: 700;
   color: var(--color-text-primary);
   flex: 1;
+}
+
+.text-muted {
+  color: var(--color-text-disabled, #9ca3af) !important;
 }
 
 /* 指标横排 */

@@ -192,6 +192,7 @@
             :binIcon="BIN_ICONS[bin.key]"
             :overflowThresholdG="settingsForm.overflowThresholdG"
             :index="idx"
+            :deviceOnline="deviceStatusPhase === 'online'"
           />
         </el-col>
       </el-row>
