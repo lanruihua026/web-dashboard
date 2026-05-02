@@ -38,6 +38,8 @@
             />
             <img
               v-if="mjpegStreamUrl"
+              ref="mjpegImageRef"
+              :key="mjpegStreamDisplaySrc"
               v-show="mjpegStreamReady"
               :src="mjpegStreamDisplaySrc"
               alt="ESP32-CAM MJPEG stream"
@@ -103,7 +105,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { Search, Monitor } from '@element-plus/icons-vue'
 import StatusDot from './StatusDot.vue'
 
@@ -119,6 +121,19 @@ const props = defineProps({
 })
 
 defineEmits(['stream-load', 'stream-error', 'raw-error', 'annotated-error'])
+
+const mjpegImageRef = ref(null)
+
+function releaseMjpegConnection() {
+  const img = mjpegImageRef.value
+  if (!img) return
+  img.src = 'about:blank'
+  img.removeAttribute('src')
+}
+
+onBeforeUnmount(() => {
+  releaseMjpegConnection()
+})
 
 const streamStatus = computed(() => {
   if (!props.mjpegStreamUrl) return 'offline'

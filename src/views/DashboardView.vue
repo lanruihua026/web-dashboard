@@ -536,9 +536,23 @@ let deviceRefreshJob = null
 let aiRefreshJob = null
 /** MJPEG 延迟重连定时器；只在确认流异常时才触发软重连 */
 let mjpegRetryTimer = null
+/** MJPEG 首帧连接看门狗；处理路由返回后浏览器长连接不触发 load/error 的情况 */
+let mjpegConnectWatchdogTimer = null
+/** MJPEG 重启定时器；先断开旧 img，再延迟恢复 URL，保证浏览器真正重新建连 */
+let mjpegRestartTimer = null
+/** 内部重启后准备恢复的 URL；用于避免 watch 把重试计数反复清零 */
+let mjpegPendingRestartUrl = ''
+/** MJPEG 首帧超时后的重启次数 */
+let mjpegConnectRestartCount = 0
 /** 首屏状态探测超时定时器：超时后从 connecting 收敛到 offline */
 let deviceStatusInitTimer = null
 let aiStatusInitTimer = null
+/** MJPEG 首帧等待超时后主动重建连接，避免路由返回后复用冻结长连接 */
+const MJPEG_CONNECT_WATCHDOG_MS = 3000
+/** 断开旧 MJPEG img 后等待一小段时间再恢复 URL，让 ESP32-CAM 释放旧 client */
+const MJPEG_RESTART_DELAY_MS = 300
+/** 首帧超时重建次数上限；超过后退回轮询原图，等待下一轮 cam-info 再尝试 */
+const MJPEG_CONNECT_RESTART_LIMIT = 3
 
 // 数据处理
 
@@ -611,6 +625,20 @@ function clearMjpegRetryTimer() {
   }
 }
 
+function clearMjpegConnectWatchdog() {
+  if (mjpegConnectWatchdogTimer) {
+    clearTimeout(mjpegConnectWatchdogTimer)
+    mjpegConnectWatchdogTimer = null
+  }
+}
+
+function clearMjpegRestartTimer() {
+  if (mjpegRestartTimer) {
+    clearTimeout(mjpegRestartTimer)
+    mjpegRestartTimer = null
+  }
+}
+
 function clearStatusInitTimer(kind) {
   const timer = kind === 'device' ? deviceStatusInitTimer : aiStatusInitTimer
   if (!timer) return
@@ -642,6 +670,53 @@ function resetMjpegState() {
   mjpegStreamReady.value = false
   mjpegErrorStreak = 0
   clearMjpegRetryTimer()
+  clearMjpegConnectWatchdog()
+}
+
+function armMjpegConnectWatchdog(resetCount = false) {
+  if (resetCount) {
+    mjpegConnectRestartCount = 0
+  }
+  clearMjpegConnectWatchdog()
+  if (!mjpegStreamUrl.value || mjpegStreamReady.value) {
+    return
+  }
+
+  mjpegConnectWatchdogTimer = setTimeout(() => {
+    mjpegConnectWatchdogTimer = null
+    if (!mjpegStreamUrl.value || mjpegStreamReady.value) {
+      return
+    }
+
+    if (mjpegConnectRestartCount < MJPEG_CONNECT_RESTART_LIMIT) {
+      mjpegConnectRestartCount++
+      restartMjpegStream()
+      return
+    }
+
+    mjpegStreamUrl.value = ''
+    refreshRawImage(true)
+    setTimeout(refreshCamStreamInfo, CAM_INFO_INTERVAL)
+  }, MJPEG_CONNECT_WATCHDOG_MS)
+}
+
+function restartMjpegStream() {
+  const streamUrl = mjpegStreamUrl.value
+  if (!streamUrl) return
+
+  clearMjpegRetryTimer()
+  clearMjpegConnectWatchdog()
+  clearMjpegRestartTimer()
+  mjpegStreamReady.value = false
+  refreshRawImage(true)
+  mjpegPendingRestartUrl = streamUrl
+  mjpegStreamUrl.value = ''
+
+  mjpegRestartTimer = setTimeout(() => {
+    mjpegRestartTimer = null
+    if (mjpegStreamUrl.value || !streamUrl) return
+    mjpegStreamUrl.value = streamUrl
+  }, MJPEG_RESTART_DELAY_MS)
 }
 
 /**
@@ -806,6 +881,7 @@ function scheduleMjpegReconnect() {
     if (!mjpegStreamUrl.value) return
     refreshRawImage(true)
     bumpMjpegReconnect()
+    armMjpegConnectWatchdog()
   }, MJPEG_RETRY_DELAY_MS)
 }
 
@@ -837,6 +913,9 @@ function stopAutoRefresh() {
     camInfoTimer = null
   }
   clearMjpegRetryTimer()
+  clearMjpegConnectWatchdog()
+  clearMjpegRestartTimer()
+  mjpegPendingRestartUrl = ''
 }
 
 /**
@@ -862,10 +941,15 @@ function onVisibilityForMjpeg() {
 
 watch(mjpegStreamUrl, (next, prev) => {
   if (next === prev) return
+  const restoredByRestart = Boolean(next && next === mjpegPendingRestartUrl)
+  if (restoredByRestart) {
+    mjpegPendingRestartUrl = ''
+  }
   resetMjpegState()
   if (next) {
     refreshRawImage(true)
     bumpMjpegReconnect()
+    armMjpegConnectWatchdog(!restoredByRestart)
     return
   }
   refreshRawImage(true)
@@ -917,6 +1001,7 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityForMjpeg)
   // 组件销毁时清除定时器，防止内存泄漏与无效请求
   stopAutoRefresh()
+  clearMjpegConnectWatchdog()
   clearStatusInitTimer('device')
   clearStatusInitTimer('ai')
 })
@@ -928,12 +1013,18 @@ function onRawImageError() {
 function onStreamImageLoad() {
   mjpegStreamReady.value = true
   mjpegErrorStreak = 0
+  mjpegConnectRestartCount = 0
+  mjpegPendingRestartUrl = ''
   clearMjpegRetryTimer()
+  clearMjpegConnectWatchdog()
+  clearMjpegRestartTimer()
 }
 
 /** MJPEG 加载失败（相机离线、跨网不可达等）时先软重连，多次失败后再回退为轮询帧 */
 function onStreamImageError() {
   mjpegStreamReady.value = false
+  clearMjpegConnectWatchdog()
+  clearMjpegRestartTimer()
   refreshRawImage(true)
   mjpegErrorStreak++
   if (mjpegErrorStreak < MJPEG_ERROR_RETRY_LIMIT) {
