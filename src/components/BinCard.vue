@@ -22,7 +22,13 @@
         <el-icon :size="24" class="bin-icon-el"><component :is="binIcon" /></el-icon>
       </span>
       <span class="bin-name" :class="{ 'text-muted': !deviceOnline }">{{ bin.name }}</span>
-      <el-tag :type="deviceOnline ? bin.tagType : 'info'" size="small" class="bin-status-tag" effect="dark">
+      <el-tag
+        v-if="!deviceOnline || bin.cardClass === 'card-normal'"
+        :type="deviceOnline ? bin.tagType : 'info'"
+        size="small"
+        class="bin-status-tag"
+        effect="dark"
+      >
         {{ deviceOnline ? bin.statusText : '设备离线' }}
       </el-tag>
     </div>
