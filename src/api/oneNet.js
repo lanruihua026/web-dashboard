@@ -2,13 +2,13 @@
 
 import axios from 'axios'
 
-// ===== 设备配置 =====
+// 设备配置
 // 以下三项必须与 esp32s3/src/main.cpp 中的 ONENET_* 常量完全一致
-const ONENET_PRODUCT_ID = 'f45hkc7xC7'                              // 产品 ID
-const ONENET_DEVICE_NAME = 'Box1'                                     // 设备名称
-const ONENET_BASE64_KEY = 'T0R5ejYyM1JrT2VuczBkZllINmZuazRicEMxc29xcnk=' // Base64 编码的设备密钥
+const ONENET_PRODUCT_ID = 'f45hkc7xC7'
+const ONENET_DEVICE_NAME = 'Box1'
+const ONENET_BASE64_KEY = 'T0R5ejYyM1JrT2VuczBkZllINmZuazRicEMxc29xcnk='
 
-// ===== OneNET Token 生成 =====
+// OneNET Token 生成
 
 /**
  * 生成 OneNET 鉴权 Token（HMAC-SHA256，与 ESP32 端 onenetToken.cpp 算法一致）。
@@ -61,7 +61,7 @@ function getExpirationTime(ttlSeconds = 3600) {
   return Math.floor(Date.now() / 1000) + ttlSeconds
 }
 
-// ===== Axios HTTP 客户端 =====
+// Axios HTTP 客户端
 /**
  * 统一的 Axios 实例。
  * baseURL 设为 /onenet-api，开发时由 vite.config.js 的 proxy 将其
@@ -69,7 +69,7 @@ function getExpirationTime(ttlSeconds = 3600) {
  */
 const http = axios.create({
   baseURL: '/onenet-api',
-  timeout: 10000  // 超时 10 秒，超时后 Axios 抛出 AxiosError
+  timeout: 10000
 })
 
 const DEVICE_TIMEOUT_MSG_RE = /设备响应超时/
@@ -93,7 +93,7 @@ function isSameDevicePropertyValue(identifier, actualValue, expectedValue) {
 }
 
 
-// ===== 公共鉴权头生成 =====
+// 公共鉴权头生成
 /**
  * 为每次 API 请求动态生成 authorization 请求头。
  * 每次调用都重新生成 Token（新的过期时间），避免长时间运行后 Token 过期。
@@ -110,7 +110,7 @@ async function authHeader() {
   return { authorization: token }
 }
 
-// ===== API 接口 =====
+// API 接口
 
 /**
  * 查询设备最新物模型属性值，并通过官方设备详情接口获取设备在线状态。

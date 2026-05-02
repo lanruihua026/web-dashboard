@@ -1,10 +1,7 @@
 <template>
-  <!-- 仪表盘根容器（满溢时仅对本容器做内阴影脉冲，不操作 body） -->
   <div class="dashboard" :class="{ 'dashboard--overflow-alert': hasAnyBinFull }">
 
-    <!-- ===== 顶部标题栏 ===== -->
     <AppHeader title="电子废弃物分类回收监控系统" tagline="INTELLIGENT RECYCLING · REAL-TIME MONITOR" :icon="DataBoard">
-      <!-- 中部：设备与服务器状态 -->
       <template #center>
         <div class="header-status-group">
           <el-tooltip content="ESP32-S3 核心网关连接状态" placement="bottom">
@@ -25,7 +22,6 @@
         </div>
       </template>
 
-      <!-- 右侧：全局控制与导航 -->
       <template #right>
         <div class="header-actions-modern">
           <ThemeToggle />
@@ -63,7 +59,6 @@
 
     <main class="page-main">
 
-    <!-- ===== 系统设置对话框 ===== -->
     <el-dialog v-model="settingsVisible" title="系统设置" width="420px" :close-on-click-modal="false">
       <el-form label-position="top" :model="settingsForm">
         <el-form-item>
@@ -104,12 +99,10 @@
           />
         </el-form-item>
       </el-form>
-      <!-- 保存时的逐步同步进度提示 -->
       <div v-if="settingsSyncMsg" class="settings-sync-hint">
         <el-icon class="is-loading"><Loading /></el-icon>
         {{ settingsSyncMsg }}
       </div>
-      <!-- 内联错误提示：当 ElMessage toast 不可用时的兜底反馈 -->
       <el-alert
         v-if="settingsErrorMsg"
         :title="settingsErrorMsg"
@@ -125,7 +118,6 @@
     </el-dialog>
 
 
-    <!-- ===== 满溢报警对话框（严格使用 Element Plus 官方 el-dialog 模板写法） ===== -->
     <el-dialog
       v-model="overflowAlertVisible"
       width="520px"
@@ -171,7 +163,6 @@
       </template>
     </el-dialog>
 
-    <!-- ===== 仓位状态区 ===== -->
     <div class="section-container main-content-stagger stagger-1">
       <div class="section-header-modern">
         <div class="section-title">
@@ -185,7 +176,6 @@
       </div>
 
       <el-row :gutter="24" class="card-row">
-        <!-- 遍历 binViews（包含预计算的样式与状态），每个仓位渲染一张卡片 -->
         <el-col v-for="(bin, idx) in binViews" :key="bin.key" :xs="24" :sm="12" :lg="8">
           <BinCard
             :bin="bin"
@@ -198,7 +188,6 @@
       </el-row>
     </div>
 
-    <!-- ===== AI 视觉识别引擎 ===== -->
     <div class="section-container main-content-stagger stagger-2">
       <div class="section-header-modern">
         <div class="section-title">
@@ -227,7 +216,6 @@
       />
     </div>
 
-    <!-- ===== 全局错误提示（请求失败时出现）===== -->
     <el-alert
       v-if="errorMsg"
       :title="errorMsg"
@@ -240,7 +228,6 @@
 
     </main>
 
-    <!-- ===== 页脚：数据来源说明 ===== -->
     <AppFooter :pills="['OneNET AIoT', 'YOLO FastAPI']" text="每 2 秒自动刷新" />
   </div>
 </template>
@@ -295,9 +282,7 @@ import { appendOverflowAlert, overflowAlertCount } from '../store/overflowAlertS
 
 const router = useRouter()
 
-// ───────────────────────────────────────────
 // 辅助函数：根据百分比/满溢状态计算展示样式
-// ───────────────────────────────────────────
 
 const STATUS_INIT_TIMEOUT_MS = 4000
 
@@ -332,9 +317,7 @@ const hasAnyBinFull = computed(() =>
   binViews.value.some((b) => b.cardClass === 'card-full')
 )
 
-// ───────────────────────────────────────────
 // 常量：仓位配置
-// ───────────────────────────────────────────
 
 /** 满溢上升沿检测：与 binViews 一致，full 或 percent≥100 视为已满 */
 function effectiveBinFull(p) {
@@ -438,9 +421,7 @@ function mergeCachedAiResult(raw) {
 
 const dashboardSnapshot = loadDashboardCache()
 
-// ───────────────────────────────────────────
 // 响应式状态
-// ───────────────────────────────────────────
 
 /** 手动刷新按钮的 loading 状态（仅手动点击时激活，不受自动轮询影响） */
 const manualLoading = ref(false)
@@ -503,13 +484,11 @@ const aiStatusText = computed(() => (
 ))
 
 
-// ───────────────────────────────────────────
 // 系统设置对话框状态
-// ───────────────────────────────────────────
 const settingsVisible = ref(false)
 const settingsSaving = ref(false)
-const settingsErrorMsg = ref('')   // 对话框内联错误文本（ElMessage 失效时的兜底显示）
-const settingsSyncMsg = ref('')    // 保存过程中显示当前正在执行的步骤
+const settingsErrorMsg = ref('')
+const settingsSyncMsg = ref('')
 
 const settingsForm = ref({
   confThreshold: Number(dashboardSnapshot?.settingsForm?.confThreshold ?? 0.70),
@@ -530,9 +509,7 @@ const aiResultExpired = computed(() => {
   return Number.isFinite(ts) && (Date.now() - ts) > AI_RESULT_STALE_MS
 })
 
-// ───────────────────────────────────────────
 // 定时器
-// ───────────────────────────────────────────
 
 /** setInterval 返回的设备刷新定时器句柄，null 表示当前未启动 */
 let deviceRefreshTimer = null
@@ -563,9 +540,7 @@ let mjpegRetryTimer = null
 let deviceStatusInitTimer = null
 let aiStatusInitTimer = null
 
-// ───────────────────────────────────────────
 // 数据处理
-// ───────────────────────────────────────────
 
 /**
  * 将 FastAPI 返回的原始推理 payload 规范化为组件内部使用的格式。
@@ -620,9 +595,7 @@ function saveDashboardCache() {
   }
 }
 
-// ───────────────────────────────────────────
 // 数据拉取
-// ───────────────────────────────────────────
 
 function refreshRawImage(force = false) {
   if (!force && mjpegStreamUrl.value) {
@@ -819,9 +792,7 @@ async function fetchAll(manual = false) {
   }
 }
 
-// ───────────────────────────────────────────
 // 自动刷新控制
-// ───────────────────────────────────────────
 
 /** bump MJPEG 重连参数，强制 <img> 重新建立 multipart 连接 */
 function bumpMjpegReconnect() {
@@ -875,15 +846,13 @@ function stopAutoRefresh() {
 function onAutoRefreshChange(val) {
   if (val) {
     startAutoRefresh()
-    fetchAll()  // 开启时立即刷新一次，不等待首个 interval 到期
+    fetchAll()
     return
   }
   stopAutoRefresh()
 }
 
-// ───────────────────────────────────────────
 // 生命周期
-// ───────────────────────────────────────────
 
 function onVisibilityForMjpeg() {
   if (document.visibilityState === 'visible' && mjpegStreamUrl.value && !mjpegStreamReady.value) {
@@ -902,7 +871,6 @@ watch(mjpegStreamUrl, (next, prev) => {
   refreshRawImage(true)
 })
 
-// ── 即将满载预警通知（6 秒后自动消失，触发一次不重复弹出）──
 let nearFullNotifyInstance = null
 watch(() => BINS.some(b => properties.value[b.key].nearFull), (isNearFull) => {
   if (isNearFull) {
@@ -981,9 +949,7 @@ function onAnnotatedImageError() {
   aiResult.value = { ...aiResult.value, imageUrl: '' }
 }
 
-// ───────────────────────────────────────────
 // 系统设置对话框逻辑
-// ───────────────────────────────────────────
 
 /**
  * 将满溢重量阈值夹紧到合法范围 [100, 5000] g，与设备端固件策略保持一致。

@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import './style.css' // 全局基础样式（盒模型重置 + 禁止横向溢出）
+import './style.css'
 import App from './App.vue'
 import router from './router'
 

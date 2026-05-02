@@ -5,23 +5,18 @@
     :style="animate ? { animationDelay: `${index * 80}ms` } : {}"
     shadow="always"
   >
-    <!-- 动态流光背景（仅在满溢且在线时显示） -->
     <div v-if="bin.cardClass === 'card-full' && deviceOnline" class="card-flow-bg" aria-hidden="true"></div>
 
-    <!-- 顶部渐变色条 -->
     <div class="card-accent-strip" :class="deviceOnline ? bin.cardClass : 'card-offline'" aria-hidden="true"></div>
 
-    <!-- 满溢角标 -->
     <div v-if="deviceOnline && bin.cardClass === 'card-full'" class="bin-badge badge-full">
       <el-icon class="badge-icon"><WarningFilled /></el-icon> 满溢
     </div>
 
-    <!-- 即将满载角标 -->
     <div v-else-if="deviceOnline && bin.cardClass === 'card-warning'" class="bin-badge badge-warning">
       <el-icon class="badge-icon"><WarnTriangleFilled /></el-icon> 即将满载
     </div>
 
-    <!-- 卡片头：图标 + 仓名 + 状态标签 -->
     <div class="bin-header">
       <span class="bin-icon-wrap" :class="{ 'animate-float': deviceOnline && bin.cardClass === 'card-full', 'is-offline': !deviceOnline }">
         <el-icon :size="24" class="bin-icon-el"><component :is="binIcon" /></el-icon>
@@ -32,7 +27,6 @@
       </el-tag>
     </div>
 
-    <!-- 指标区 -->
     <div class="bin-metrics" :class="{ 'is-offline': !deviceOnline }">
       <div class="metric">
         <div class="metric-label">当前重量</div>
@@ -50,7 +44,6 @@
       </div>
     </div>
 
-    <!-- 进度条 -->
     <el-tooltip :content="deviceOnline ? `容量上限：${overflowThresholdG} g` : '设备离线，数据可能已过期'" placement="bottom">
       <div class="progress-wrapper">
         <el-progress

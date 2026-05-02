@@ -18,9 +18,7 @@
     <div class="header-right">
       <slot name="right"></slot>
     </div>
-    <!-- 底部渐变彩色细线 -->
     <div class="header-accent-line" aria-hidden="true"></div>
-    <!-- 极细扫描线 -->
     <div class="header-scan-line" aria-hidden="true"></div>
   </header>
 </template>

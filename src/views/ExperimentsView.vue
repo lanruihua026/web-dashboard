@@ -1,6 +1,5 @@
 <template>
   <div class="experiments-page">
-    <!-- ===== 顶部导航栏 ===== -->
     <AppHeader title="科学实验与数据采样" tagline="EXPERIMENT LAB · DATA SAMPLING" :icon="Memo">
       <template #left-extra>
         <el-button :icon="ArrowLeft" @click="router.push('/')" class="back-btn-modern" round>
@@ -43,7 +42,6 @@
     </AppHeader>
 
     <main class="page-main main-content-stagger">
-      <!-- ===== 概览与实时值 (第一排) ===== -->
       <section class="hero-grid stagger-1">
         <div class="hero-card-modern">
           <div class="hero-header">
@@ -99,7 +97,6 @@
         </div>
       </section>
 
-      <!-- ===== 表2：识别准确率 (第二排) ===== -->
       <section class="module-card-modern stagger-2">
         <div class="section-header-modern">
           <div class="section-title">
@@ -161,7 +158,6 @@
         </div>
       </section>
 
-      <!-- ===== 表3：重量测量精度 (第三排) ===== -->
       <section class="module-card-modern stagger-3">
         <div class="section-header-modern">
           <div class="section-title">
@@ -200,7 +196,6 @@
         </div>
       </section>
 
-      <!-- ===== 表4：数据链路延时 (第四排) ===== -->
       <section class="module-card-modern stagger-4">
         <div class="section-header-modern">
           <div class="section-title">

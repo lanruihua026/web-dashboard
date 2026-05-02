@@ -81,7 +81,7 @@ function saveEventsToStorage(data) {
   }
 }
 
-// ===== 响应式历史数据 =====
+// 响应式历史数据
 export const historyData = ref(loadFromStorage())
 export const dropEventHistory = ref(loadEventStorage())
 
