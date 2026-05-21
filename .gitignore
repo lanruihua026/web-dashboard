@@ -50,3 +50,6 @@ coverage/
 #排除AI工具
 .claude
 .cursor
+OneNET云平台接口总结.md
+核心代码摘录-阈值设定与云平台数据获取.md
+网页功能结构图-黑白打印.drawio

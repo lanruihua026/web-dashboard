@@ -1,6 +1,5 @@
 <template>
   <div class="dashboard" :class="{ 'dashboard--overflow-alert': hasAnyBinFull }">
-
     <AppHeader title="电子废弃物分类回收监控系统" tagline="INTELLIGENT RECYCLING · REAL-TIME MONITOR" :icon="DataBoard">
       <template #center>
         <div class="header-status-group">
